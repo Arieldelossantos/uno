@@ -1,4 +1,6 @@
-﻿using System;
+﻿// #define TRACK_REFS
+
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Reflection;
@@ -10,8 +12,6 @@ using Uno.UI.Samples.Controls;
 using Uno.UI.Samples.Entities;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Globalization;
-using Windows.UI.Xaml.Data;
-using Windows.ApplicationModel.Core;
 using Windows.UI.Core;
 using Windows.Storage;
 using Uno.Extensions;
@@ -20,9 +20,8 @@ using Microsoft.Extensions.Logging;
 using Windows.UI.Xaml;
 using System.IO;
 using Windows.UI.Popups;
-using Uno.Disposables;
 
-#if XAMARIN || NETSTANDARD2_0
+#if XAMARIN || UNO_REFERENCE_API
 using Windows.UI.Xaml.Controls;
 #else
 using Windows.Graphics.Imaging;
@@ -43,11 +42,15 @@ namespace SampleControl.Presentation
 
 	public partial class SampleChooserViewModel
 	{
+#if DEBUG
 		private const int _numberOfRecentSamplesVisible = 10;
+#else
+		private const int _numberOfRecentSamplesVisible = 0;
+#endif
 		private List<SampleChooserCategory> _categories;
 
 		private readonly Uno.Threading.AsyncLock _fileLock = new Uno.Threading.AsyncLock();
-#if !NETSTANDARD2_0
+#if !UNO_REFERENCE_API
 		private readonly string SampleChooserFileAddress = "SampleChooserFileAddress.";
 #endif
 
@@ -73,6 +76,10 @@ namespace SampleControl.Presentation
 		public SampleChooserViewModel()
 		{
 			Instance = this;
+
+#if TRACK_REFS
+			Uno.UI.DataBinding.BinderReferenceHolder.IsEnabled = true;
+#endif
 
 #if HAS_UNO
 			// Disable all pooling so that controls get collected quickly.
@@ -250,124 +257,149 @@ namespace SampleControl.Presentation
 
 				await DumpOutputFolderName(ct, folderName);
 
-
 				await Window.Current.Dispatcher.RunAsync(
 					CoreDispatcherPriority.Normal,
 					async () =>
-				{
-#if XAMARIN
-					var initialInactiveStats = Uno.UI.DataBinding.BinderReferenceHolder.GetInactiveViewReferencesStats();
-					var initialActiveStats = Uno.UI.DataBinding.BinderReferenceHolder.GetReferenceStats();
-#endif
-					var testQuery = from category in _categories
-									from sample in category.SamplesContent
-									where !sample.IgnoreInSnapshotTests
-									// where sample.ControlName.Equals("GridViewVerticalGrouped")
-									select new SampleInfo
-									{
-										Category = category,
-										Sample = sample,
-									};
-
-					Debug.Assert(
-						_firstTargetToRun.IsNullOrEmpty() || testQuery.Any(testInfo => testInfo.Matches(_firstTargetToRun)),
-						"First target to run must be either a Category or a Sample that is present in the app."
-					);
-
-					Debug.Assert(
-						_targetsToSkip.Where(target => !target.IsNullOrWhiteSpace()).None(target => target.Equals(_firstTargetToRun, StringComparison.OrdinalIgnoreCase)),
-						"First test to run cannot be skipped"
-					);
-
-					var tests = testQuery
-						.SkipWhile(testInfo => _firstTargetToRun.HasValue() && !testInfo.Matches(_firstTargetToRun))
-						.Where(testInfo => _targetsToSkip.None(testInfo.Matches))
-						.ToArray();
-
-					if (this.Log().IsEnabled(LogLevel.Debug))
 					{
-						this.Log().Debug($"Generating tests for {tests.Count()} test in {folderName}");
-					}
-
-					foreach (var sample in tests)
-					{
-						try
-						{
-#if XAMARIN
-							var inactiveStats = Uno.UI.DataBinding.BinderReferenceHolder.GetInactiveViewReferencesStats();
-							var activeStats = Uno.UI.DataBinding.BinderReferenceHolder.GetReferenceStats();
-#endif
-
-							var fileName = $"{sample.Category.Category}-{sample.Sample.ControlName}.png";
-
-							try
-							{
-								LogMemoryStatistics();
-
-								if (this.Log().IsEnabled(LogLevel.Debug))
-								{
-									this.Log().Debug($"Generating {folderName}\\{fileName}");
-								}
-
-								await ShowNewSection(ct, Section.SamplesContent);
-
-								SelectedLibrarySample = sample.Sample;
-
-								var content = await UpdateContent(ct, sample.Sample) as FrameworkElement;
-
-								ContentPhone = content;
-
-								await Task.Delay(500, ct);
-
-								await GenerateBitmap(ct, folderName, fileName, content);
-							}
-							catch (Exception e)
-							{
-								this.Log().Error($"Failed to execute test for {fileName}", e);
-							}
-
-#if XAMARIN
-							Uno.UI.DataBinding.BinderReferenceHolder.LogInactiveViewReferencesStatsDiff(inactiveStats);
-							Uno.UI.DataBinding.BinderReferenceHolder.LogActiveViewReferencesStatsDiff(activeStats);
-#endif
-						}
-						catch (Exception e)
-						{
-							if (this.Log().IsEnabled(LogLevel.Error))
-							{
-								this.Log().Error("Exception", e);
-							}
-						}
-					}
-
-					ContentPhone = null;
-
-					if (this.Log().IsEnabled(LogLevel.Debug))
-					{
-						this.Log().Debug($"Final binder reference stats");
-					}
-
-#if XAMARIN
-					Uno.UI.DataBinding.BinderReferenceHolder.LogInactiveViewReferencesStatsDiff(initialInactiveStats);
-					Uno.UI.DataBinding.BinderReferenceHolder.LogActiveViewReferencesStatsDiff(initialActiveStats);
-#endif
-
-					// Done action is needed as awaiting the task is not enough to deterine the end of this method.
-					doneAction?.Invoke();
-				});
+						await RecordAllTestsInner(folderName, ct, doneAction);
+					});
 			}
 			catch (Exception e)
 			{
 				if (this.Log().IsEnabled(LogLevel.Error))
 				{
-					this.Log().Error("Exception", e);
+					this.Log().Error("RecordAllTests exception", e);
+				}
+			}
+		}
+
+		private async Task RecordAllTestsInner(string folderName, CancellationToken ct, Action doneAction = null)
+		{
+			try
+			{
+#if TRACK_REFS
+				var initialInactiveStats = Uno.UI.DataBinding.BinderReferenceHolder.GetInactiveViewReferencesStats();
+				var initialActiveStats = Uno.UI.DataBinding.BinderReferenceHolder.GetReferenceStats();
+#endif
+				var testQuery = from category in _categories
+								from sample in category.SamplesContent
+								where !sample.IgnoreInSnapshotTests
+								// where sample.ControlName.Equals("GridViewVerticalGrouped")
+								select new SampleInfo
+								{
+									Category = category,
+									Sample = sample,
+								};
+
+				Debug.Assert(
+					_firstTargetToRun.IsNullOrEmpty() || testQuery.Any(testInfo => testInfo.Matches(_firstTargetToRun)),
+					"First target to run must be either a Category or a Sample that is present in the app."
+				);
+
+				Debug.Assert(
+					_targetsToSkip.Where(target => !target.IsNullOrWhiteSpace()).None(target => target.Equals(_firstTargetToRun, StringComparison.OrdinalIgnoreCase)),
+					"First test to run cannot be skipped"
+				);
+
+				var tests = testQuery
+					.SkipWhile(testInfo => _firstTargetToRun.HasValue() && !testInfo.Matches(_firstTargetToRun))
+					.Where(testInfo => _targetsToSkip.None(testInfo.Matches))
+					.ToArray();
+
+				if (this.Log().IsEnabled(LogLevel.Debug))
+				{
+					this.Log().Debug($"Generating tests for {tests.Count()} test in {folderName}");
+				}
+
+				foreach (var sample in tests)
+				{
+					try
+					{
+#if TRACK_REFS
+						var inactiveStats = Uno.UI.DataBinding.BinderReferenceHolder.GetInactiveViewReferencesStats();
+						var activeStats = Uno.UI.DataBinding.BinderReferenceHolder.GetReferenceStats();
+#endif
+
+						var fileName = $"{sample.Category.Category}-{sample.Sample.ControlName}.png";
+
+						try
+						{
+							Console.WriteLine($"Creating control for {fileName}");
+
+							LogMemoryStatistics();
+
+							if (this.Log().IsEnabled(LogLevel.Debug))
+							{
+								this.Log().Debug($"Generating {folderName}\\{fileName}");
+							}
+
+							await ShowNewSection(ct, Section.SamplesContent);
+
+							SelectedLibrarySample = sample.Sample;
+
+							var content = await UpdateContent(ct, sample.Sample) as FrameworkElement;
+
+							ContentPhone = content;
+
+							await Task.Delay(500, ct);
+
+							Console.WriteLine($"Generating screenshot for {fileName}");
+
+							await GenerateBitmap(ct, folderName, fileName, content);
+						}
+						catch (Exception e)
+						{
+							this.Log().Error($"Failed to execute test for {fileName}", e);
+						}
+
+#if TRACK_REFS
+						Uno.UI.DataBinding.BinderReferenceHolder.LogInactiveViewReferencesStatsDiff(inactiveStats);
+						Uno.UI.DataBinding.BinderReferenceHolder.LogActiveViewReferencesStatsDiff(activeStats);
+#endif
+						if (this.Log().IsEnabled(LogLevel.Debug))
+						{
+							this.Log().Debug($"Initial diff");
+						}
+#if TRACK_REFS
+						Uno.UI.DataBinding.BinderReferenceHolder.LogInactiveViewReferencesStatsDiff(initialInactiveStats);
+						Uno.UI.DataBinding.BinderReferenceHolder.LogActiveViewReferencesStatsDiff(initialActiveStats);
+#endif
+					}
+					catch (Exception e)
+					{
+						if (this.Log().IsEnabled(LogLevel.Error))
+						{
+							this.Log().Error("Exception", e);
+						}
+					}
+				}
+
+				ContentPhone = null;
+
+				if (this.Log().IsEnabled(LogLevel.Debug))
+				{
+					this.Log().Debug($"Final binder reference stats");
+				}
+
+#if TRACK_REFS
+				Uno.UI.DataBinding.BinderReferenceHolder.LogInactiveViewReferencesStatsDiff(initialInactiveStats);
+				Uno.UI.DataBinding.BinderReferenceHolder.LogActiveViewReferencesStatsDiff(initialActiveStats);
+#endif
+			}
+			catch (Exception e)
+			{
+				if (this.Log().IsEnabled(LogLevel.Error))
+				{
+					this.Log().Error("RecordAllTests exception", e);
 				}
 			}
 			finally
 			{
+				// Done action is needed as awaiting the task is not enough to determine the end of this method.
+				doneAction?.Invoke();
+
 				IsSplitVisible = true;
 			}
-
 		}
 
 		partial void LogMemoryStatistics();
@@ -543,7 +575,11 @@ namespace SampleControl.Presentation
 		private List<SampleChooserCategory> GetSamples()
 		{
 			var categories =
+#if !__WASM__
+				from assembly in GetAllAssembies().AsParallel()
+#else
 				from assembly in GetAllAssembies()
+#endif
 				from type in FindDefinedAssemblies(assembly)
 				let sampleAttribute = FindSampleAttribute(type)
 				where sampleAttribute != null
@@ -553,7 +589,7 @@ namespace SampleControl.Presentation
 				orderby contentByCategory.Key.ToLower(CultureInfo.CurrentUICulture)
 				select new SampleChooserCategory(contentByCategory);
 
-			return categories.AsParallel().ToList();
+			return categories.ToList();
 
 			SampleChooserContent GetContent(TypeInfo type, SampleAttribute attribute)
 				=> new SampleChooserContent
@@ -565,7 +601,8 @@ namespace SampleControl.Presentation
 					ViewModelType = attribute.ViewModelType,
 					Description = attribute.Description,
 					ControlType = type.AsType(),
-					IgnoreInSnapshotTests = attribute.IgnoreInSnapshotTests
+					IgnoreInSnapshotTests = attribute.IgnoreInSnapshotTests,
+					IsManualTest = attribute.IsManualTest
 				};
 		}
 
@@ -681,10 +718,10 @@ namespace SampleControl.Presentation
 			if (sample != null)
 			{
 				var text = $@"
+query string: ?sample={sample.Categories.FirstOrDefault() ?? ""}/{sample.ControlName}
 view: {sample.ControlType.FullName}
 categories: {sample.Categories?.JoinBy(", ")}
-description:
-" + sample.Description;
+description: {sample.Description}";
 
 				await new MessageDialog(text.Trim(), sample.ControlName).ShowAsync();
 			}
@@ -755,7 +792,9 @@ description:
 				{
 					void Dispose(object snd, RoutedEventArgs e)
 					{
+						container.DataContext = null;
 						container.Unloaded -= Dispose;
+						container.DataContext = null;
 						disposable.Dispose();
 					}
 
@@ -794,6 +833,9 @@ description:
 				RecentSamples = recents;
 			}
 
+			GC.Collect(2);
+			GC.WaitForPendingFinalizers();
+
 			return container;
 		}
 
@@ -817,10 +859,34 @@ description:
 		{
 			var q = from category in _categories
 					from test in category.SamplesContent
-					where !test.IgnoreInSnapshotTests
+					where !test.IgnoreInSnapshotTests && !test.IsManualTest
 					select test.ControlType.FullName;
 
 			return string.Join(";", q.Distinct());
+		}
+
+		public async Task SetSelectedSample(CancellationToken token, string categoryName, string sampleName)
+		{
+			var category = _categories.FirstOrDefault(
+				c => c.Category != null &&
+				c.Category.Equals(categoryName, StringComparison.InvariantCultureIgnoreCase));
+
+			if (category == null)
+			{
+				return;
+			}
+
+			var sample = category.SamplesContent.FirstOrDefault(
+				s => s.ControlName != null && s.ControlName.Equals(sampleName, StringComparison.InvariantCultureIgnoreCase));
+
+			if (sample == null)
+			{
+				return;
+			}
+
+			await ShowNewSection(token, Section.SamplesContent);
+
+			SelectedLibrarySample = sample;
 		}
 
 		public async Task SetSelectedSample(CancellationToken ct, string metadataName)
@@ -860,7 +926,7 @@ description:
 
 		private async Task Set<T>(string key, T value)
 		{
-#if !NETSTANDARD2_0
+#if !UNO_REFERENCE_API
 			var json = Newtonsoft.Json.JsonConvert.SerializeObject(value);
 			ApplicationData.Current.LocalSettings.Values[key] = json;
 #endif
@@ -868,7 +934,7 @@ description:
 
 		private async Task<T> Get<T>(string key, Func<T> d = null)
 		{
-#if !NETSTANDARD2_0
+#if !UNO_REFERENCE_API
 			var json = (string)ApplicationData.Current.LocalSettings.Values[key];
 			return Newtonsoft.Json.JsonConvert.DeserializeObject<T>(json);
 #else
@@ -878,7 +944,7 @@ description:
 
 		private async Task SetFile<T>(string key, T value)
 		{
-#if !NETSTANDARD2_0
+#if !UNO_REFERENCE_API
 			var json = Newtonsoft.Json.JsonConvert.SerializeObject(value);
 
 			using (await _fileLock.LockAsync(CancellationToken.None))
@@ -898,7 +964,7 @@ description:
 
 		private async Task<T> GetFile<T>(string key, Func<T> defaultValue = null)
 		{
-#if !NETSTANDARD2_0
+#if !UNO_REFERENCE_API
 			string json = null;
 
 			using (await _fileLock.LockAsync(CancellationToken.None))

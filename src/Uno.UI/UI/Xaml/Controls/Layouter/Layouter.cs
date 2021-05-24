@@ -1,12 +1,14 @@
 // #define LOG_LAYOUT
 
-#if !NETSTANDARD2_0
+#if !UNO_REFERENCE_API
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Windows.Foundation;
+using Windows.UI.Xaml.Controls.Primitives;
 using Windows.UI.Xaml.Media;
 using Uno;
 using Uno.Extensions;
@@ -17,7 +19,6 @@ using Uno.UI;
 using static System.Double;
 using static System.Math;
 using static Uno.UI.LayoutHelper;
-using System.Diagnostics.Contracts;
 
 #if XAMARIN_ANDROID
 using Android.Views;
@@ -53,11 +54,14 @@ namespace Windows.UI.Xaml.Controls
 
 		internal Size _unclippedDesiredSize;
 
+		private UIElement _elementAsUIElement;
+
 		public IFrameworkElement Panel { get; }
 
 		protected Layouter(IFrameworkElement element)
 		{
 			Panel = element;
+			_elementAsUIElement = element as UIElement;
 
 			var log = this.Log();
 			if (log.IsEnabled(LogLevel.Debug))
@@ -73,15 +77,13 @@ namespace Windows.UI.Xaml.Controls
 		/// <returns>The size of the panel, in logical pixel.</returns>
 		public Size Measure(Size availableSize)
 		{
-			IDisposable traceActivity = null;
-			if (_trace.IsEnabled)
-			{
-				traceActivity = _trace.WriteEventActivity(
+			using var traceActivity = _trace.IsEnabled
+				? _trace.WriteEventActivity(
 					FrameworkElement.TraceProvider.FrameworkElement_MeasureStart,
 					FrameworkElement.TraceProvider.FrameworkElement_MeasureStop,
-					new object[] { LoggingOwnerTypeName, Panel.GetDependencyObjectId() }
-				);
-			}
+					new object[] {LoggingOwnerTypeName, Panel.GetDependencyObjectId()}
+				)
+				: null;
 
 			if (Panel.Visibility == Visibility.Collapsed)
 			{
@@ -89,10 +91,14 @@ namespace Windows.UI.Xaml.Controls
 				return default;
 			}
 
-			using (traceActivity)
+			try
 			{
-				var (minSize, maxSize) = Panel.GetMinMax();
+				if (_elementAsUIElement?.IsVisualTreeRoot ?? false)
+				{
+					UIElement.IsLayoutingVisualTreeRoot = true;
+				}
 
+				var (minSize, maxSize) = Panel.GetMinMax();
 				var marginSize = Panel.GetMarginSize();
 
 				// NaN values are accepted as input here, particularly when coming from
@@ -106,6 +112,7 @@ namespace Windows.UI.Xaml.Controls
 					.AtLeastZero()
 					.AtMost(maxSize);
 
+				LayoutInformation.SetAvailableSize(Panel, frameworkAvailableSize);
 				var desiredSize = MeasureOverride(frameworkAvailableSize);
 
 				_logDebug?.LogTrace($"{this}.MeasureOverride(availableSize={frameworkAvailableSize}): desiredSize={desiredSize}");
@@ -134,10 +141,17 @@ namespace Windows.UI.Xaml.Controls
 
 				// DesiredSize must include margins
 				// TODO: on UWP, it's not clipped. See test When_MinWidth_SmallerThan_AvailableSize
-				SetDesiredChildSize(Panel as View, clippedDesiredSize);
+				LayoutInformation.SetDesiredSize(Panel, clippedDesiredSize);
 
 				// We return "clipped" desiredSize to caller... the unclipped version stays internal
 				return clippedDesiredSize;
+			}
+			finally
+			{
+				if (_elementAsUIElement?.IsVisualTreeRoot ?? false)
+				{
+					UIElement.IsLayoutingVisualTreeRoot = false;
+				}
 			}
 		}
 
@@ -159,30 +173,31 @@ namespace Windows.UI.Xaml.Controls
 		/// </summary>
 		public void Arrange(Rect finalRect)
 		{
-			var uiElement = Panel as UIElement;
+			LayoutInformation.SetLayoutSlot(Panel, finalRect);
 
-			if (uiElement != null)
-			{
-				uiElement.LayoutSlot = finalRect;
-			}
-
-			IDisposable traceActivity = null;
-			if (_trace.IsEnabled)
-			{
-				traceActivity = _trace.WriteEventActivity(
+			using var traceActivity = _trace.IsEnabled
+				? _trace.WriteEventActivity(
 					FrameworkElement.TraceProvider.FrameworkElement_ArrangeStart,
 					FrameworkElement.TraceProvider.FrameworkElement_ArrangeStop,
-					new object[] { LoggingOwnerTypeName, Panel.GetDependencyObjectId() }
-				);
-			}
-			using (traceActivity)
+					new object[] {LoggingOwnerTypeName, Panel.GetDependencyObjectId()}
+				)
+				: null;
+
+			try
 			{
+				if (_elementAsUIElement?.IsVisualTreeRoot ?? false)
+				{
+					UIElement.IsLayoutingVisualTreeRoot = true;
+				}
+
 				if (this.Log().IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
 				{
 					this.Log().DebugFormat("[{0}/{1}] Arrange({2}/{3}/{4}/{5})", LoggingOwnerTypeName, Name, GetType(), Panel.Name, finalRect, Panel.Margin);
 				}
 
-				var clippedArrangeSize = uiElement?.ClippedFrame?.Size ?? finalRect.Size;
+				var clippedArrangeSize = _elementAsUIElement?.ClippedFrame is Rect clip && !_elementAsUIElement.IsArrangeDirty
+					? clip.Size
+					: finalRect.Size;
 
 				bool allowClipToSlot;
 				bool needsClipToSlot;
@@ -246,16 +261,27 @@ namespace Windows.UI.Xaml.Controls
 
 				var renderSize = ArrangeOverride(arrangeSize);
 
-				if (uiElement != null)
+				if (_elementAsUIElement != null)
 				{
-					uiElement.RenderSize = renderSize.AtMost(maxSize);
-					uiElement.NeedsClipToSlot = needsClipToSlot;
-					uiElement.ApplyClip();
+					_elementAsUIElement.RenderSize = renderSize.AtMost(maxSize);
+					_elementAsUIElement.NeedsClipToSlot = needsClipToSlot;
+					_elementAsUIElement.ApplyClip();
 
 					if (Panel is FrameworkElement fe)
 					{
 						fe.OnLayoutUpdated();
 					}
+				}
+				else if (Panel is IFrameworkElement_EffectiveViewport evp)
+				{
+					evp.OnLayoutUpdated();
+				}
+			}
+			finally
+			{
+				if (_elementAsUIElement?.IsVisualTreeRoot ?? false)
+				{
+					UIElement.IsLayoutingVisualTreeRoot = false;
 				}
 			}
 		}
@@ -274,9 +300,12 @@ namespace Windows.UI.Xaml.Controls
 		protected abstract Size ArrangeOverride(Size finalSize);
 
 		/// <summary>
-		/// Sets the desired child size back on the view. (Used in iOS which does not store measured size)
+		/// Provides the desired size of the element, from the last measure phase.
 		/// </summary>
-		partial void SetDesiredChildSize(View view, Size desiredSize);
+		/// <param name="view">The element to get the measured with</param>
+		/// <returns>The measured size</returns>
+		Size ILayouter.GetDesiredSize(View view)
+			=> LayoutInformation.GetDesiredSize(view);
 
 		protected Size MeasureChild(View view, Size slotSize)
 		{
@@ -292,7 +321,7 @@ namespace Windows.UI.Xaml.Controls
 				// We want the collapsed behavior, so we return a 0,0 size instead.
 
 				// Note: Visibility is checked in both Measure and MeasureChild, since some IFrameworkElement children may not have their own Layouter
-				SetDesiredChildSize(view, ret);
+				LayoutInformation.SetDesiredSize(view, ret);
 
 				if (this.Log().IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
 				{
@@ -418,7 +447,7 @@ namespace Windows.UI.Xaml.Controls
 			{
 				// For native controls only - because it's already set in Layouter.Measure()
 				// for Uno's managed controls
-				SetDesiredChildSize(view, ret);
+				LayoutInformation.SetDesiredSize(view, ret);
 			}
 
 
@@ -521,7 +550,7 @@ namespace Windows.UI.Xaml.Controls
 					|| hasChildMinHeight
 					)
 				{
-					var desiredSize = DesiredChildSize(view);
+					var desiredSize = LayoutInformation.GetDesiredSize(view);
 
 					// Apply vertical alignment
 					if (

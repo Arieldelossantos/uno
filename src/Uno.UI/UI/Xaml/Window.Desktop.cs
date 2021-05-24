@@ -7,17 +7,21 @@ using Uno.UI;
 using Windows.Foundation;
 using Windows.Foundation.Metadata;
 using Windows.UI.Core;
+using Windows.UI.Xaml.Controls;
 
 namespace Windows.UI.Xaml
 {
 	public sealed partial class Window
 	{
 		private static Window _current;
+		private Grid _main = null;
 		private bool _isActive;
 		private UIElement _content;
 
 		public Window()
 		{
+			CoreWindow = new CoreWindow();
+
 			InitializeCommon();
 		}
 
@@ -29,7 +33,17 @@ namespace Windows.UI.Xaml
 
 		private void InternalSetContent(UIElement value)
 		{
+			if (_content != null)
+			{
+				_content.IsWindowRoot = false;
+				_content.IsVisualTreeRoot = false;
+			}
+
 			_content = value;
+
+			_content.IsWindowRoot = true;
+			_content.IsVisualTreeRoot = true;
+
 			TryLoadContent();
 		}
 
@@ -42,6 +56,8 @@ namespace Windows.UI.Xaml
 		}
 
 		private UIElement InternalGetContent() => _content;
+
+		private UIElement InternalGetRootElement() => _content;
 
 		private static Window InternalGetCurrentWindow()
 		{

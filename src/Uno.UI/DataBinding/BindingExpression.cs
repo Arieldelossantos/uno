@@ -96,6 +96,13 @@ namespace Windows.UI.Xaml.Data
 			// Note: Bindings should still be disposed in order to also remove reference on the Source.
 			_view = viewReference;
 
+			if(_view?.Target is AttachedDependencyObject ado)
+			{
+				// This case is used to process x:Bind compiled bindings, where the POCO is wrapped around an
+				// AttachedDependencyObject instance to make it bindable.
+				_view = ado.OwnerWeakReference;
+			}
+
 			_targetOwnerType = targetPropertyDetails.Property.OwnerType;
 			TargetPropertyDetails = targetPropertyDetails;
 			_bindingPath = new BindingPath(
@@ -173,7 +180,7 @@ namespace Windows.UI.Xaml.Data
 				return;
 			}
 
-#if !HAS_EXPENSIVE_TRYFINALLY // Try/finally incurs a very large performance hit in mono-wasm - https://github.com/mono/mono/issues/13653
+#if !HAS_EXPENSIVE_TRYFINALLY // Try/finally incurs a very large performance hit in mono-wasm - https://github.com/dotnet/runtime/issues/50783
 			try
 #endif
 			{
@@ -209,7 +216,7 @@ namespace Windows.UI.Xaml.Data
 					_bindingPath.Value = value;
 				}
 			}
-#if !HAS_EXPENSIVE_TRYFINALLY // Try/finally incurs a very large performance hit in mono-wasm - https://github.com/mono/mono/issues/13653
+#if !HAS_EXPENSIVE_TRYFINALLY // Try/finally incurs a very large performance hit in mono-wasm - https://github.com/dotnet/runtime/issues/50783
 			finally
 #endif
 			{
@@ -338,13 +345,6 @@ namespace Windows.UI.Xaml.Data
 				if (this.Log().IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
 				{
 					this.Log().DebugFormat("Applying explicit source {0} on {1}", ExplicitSource?.GetType(), _view.Target?.GetType());
-				}
-
-				var resourceName = ExplicitSource as string;
-
-				if (resourceName.HasValue())
-				{
-					_dataContext = Uno.UI.DataBinding.WeakReferencePool.RentWeakReference(this, ResourceHelper.FindResource(resourceName));
 				}
 
 				ApplyBinding();
@@ -575,7 +575,12 @@ namespace Windows.UI.Xaml.Data
 					_IsCurrentlyPushing = true;
 					// Get the source value and place it in the target property
 					var convertedValue = ConvertValue(v);
-					if (useTargetNullValue && convertedValue == null && ParentBinding.TargetNullValue != null)
+
+					if (convertedValue == DependencyProperty.UnsetValue)
+					{
+						ApplyFallbackValue();
+					}
+					else if (useTargetNullValue && convertedValue == null && ParentBinding.TargetNullValue != null)
 					{
 						SetTargetValue(ConvertValue(ParentBinding.TargetNullValue));
 					}
@@ -594,7 +599,7 @@ namespace Windows.UI.Xaml.Data
 
 				ApplyFallbackValue();
 			}
-#if !HAS_EXPENSIVE_TRYFINALLY // Try/finally incurs a very large performance hit in mono-wasm - https://github.com/mono/mono/issues/13653
+#if !HAS_EXPENSIVE_TRYFINALLY // Try/finally incurs a very large performance hit in mono-wasm - https://github.com/dotnet/runtime/issues/50783
 			finally
 #endif
 			{

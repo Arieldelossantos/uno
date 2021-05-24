@@ -5,6 +5,7 @@ using SkiaSharp;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Uno.Extensions;
 using Uno.Logging;
@@ -48,12 +49,27 @@ namespace Windows.UI.Composition
 				try
 				{
 					_image = SKImage.FromEncodedData(stream);
-					return (true, "Success");
+					return _image is null
+						? (false, "Failed to decode image")
+						: (true, "Success");
 				}
 				catch (Exception e)
 				{
 					return (true, e.Message);
 				}
+			}
+		}
+
+		/// <summary>
+		/// Copies the provided pixels to the composition surface
+		/// </summary>
+		internal unsafe void CopyPixels(int pixelWidth, int pixelHeight, ReadOnlyMemory<byte> data)
+		{
+			var info = new SKImageInfo(pixelWidth, pixelHeight, SKColorType.Bgra8888, SKAlphaType.Premul);
+
+			using (var pData = data.Pin())
+			{
+				_image = SKImage.FromPixelCopy(info, (IntPtr)pData.Pointer, pixelWidth * 4);
 			}
 		}
 	}

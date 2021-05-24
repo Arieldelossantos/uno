@@ -1,7 +1,7 @@
 ---
 name: Samples Request
 about: Request an enhancement to the Uno samples
-labels: kind/contributor-experience, kind/documentation, triage/untriaged
+labels: kind/contributor-experience, kind/documentation, triage/untriaged, difficulty/tbd
 ---
 
 <!-- Please only use this template for submitting enhancement requests -->
@@ -20,6 +20,7 @@ labels: kind/contributor-experience, kind/documentation, triage/untriaged
 - [ ] Skia
   - [ ] WPF
   - [ ] GTK (Linux)
+  - [ ] Tizen
 - [ ] Windows
 
 

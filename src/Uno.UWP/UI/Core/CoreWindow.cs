@@ -1,50 +1,90 @@
+#nullable enable
+
 using System;
-using System.Runtime.InteropServices;
+using Microsoft.Extensions.Logging;
+using Uno.Extensions;
 using Windows.Foundation;
-using Windows.Foundation.Collections;
-using Windows.Foundation.Metadata;
+using Windows.UI.Input;
 
 namespace Windows.UI.Core
 {
+	/// <summary>
+	/// Represents the UWP app with input events and basic user interface behaviors.
+	/// </summary>
 	public partial class CoreWindow
 	{
 		[ThreadStatic]
-		private static CoreWindow _current;
-
-		public static CoreWindow GetForCurrentThread()
-			=> _current; // UWP returns 'null' if on a BG thread
+		private static CoreWindow? _current;
+		private static Action? _invalidateRender;
 
 		private Point? _pointerPosition;
-		private IPointerEventArgs _lastPointerEventArgs;
-		private static Action _invalidateRender;
+		private CoreWindowActivationState _lastActivationState;
 
 		internal CoreWindow()
 		{
 			_current = this;
+			Main ??= this;
+
 			InitializePartial();
 		}
 
-		internal static void SetInvalidateRender(Action invalidateRender) => _invalidateRender = invalidateRender;
+		/// <summary>
+		/// Occurs when the window size is changed.
+		/// </summary>
+		public event TypedEventHandler<CoreWindow, WindowSizeChangedEventArgs>? SizeChanged;
 
-		internal static void QueueInvalidateRender() => _invalidateRender?.Invoke();
+		/// <summary>
+		/// Is fired when the window completes activation or deactivation.
+		/// </summary>
+		public event TypedEventHandler<CoreWindow, WindowActivatedEventArgs>? Activated;
 
-		partial void InitializePartial();
-    
-		public event TypedEventHandler<CoreWindow, WindowSizeChangedEventArgs> SizeChanged;
+		/// <summary>
+		/// Is fired when the window visibility is changed.
+		/// </summary>
+		public event TypedEventHandler<CoreWindow, VisibilityChangedEventArgs>? VisibilityChanged;
 
-		public CoreDispatcher Dispatcher
-			=> CoreDispatcher.Main;
+		internal static CoreWindow? Main { get; private set; }
 
+		/// <summary>
+		/// Gets the event dispatcher for the window.
+		/// </summary>
+		public CoreDispatcher Dispatcher => CoreDispatcher.Main;
+
+		/// <summary>
+		/// Gets the client coordinates of the pointer.
+		/// </summary>
 		public Point PointerPosition
 		{
-			get => _pointerPosition ?? _lastPointerEventArgs?.GetLocation() ?? new Point();
+			get => _pointerPosition ?? LastPointerEvent?.GetLocation(null).Position ?? new Point();
 			set => _pointerPosition = value;
 		}
 
-#if !__WASM__ && !__MACOS__
-		[Uno.NotImplemented]
+#if !__WASM__ && !__MACOS__ && !__SKIA__
+		/// <summary>
+		/// Gets or sets the cursor used by the app.
+		/// </summary>
+		[Uno.NotImplemented("__ANDROID__", "__IOS__", "NET461", "__NETSTD_REFERENCE__")]
 		public CoreCursor PointerCursor { get; set; } = new CoreCursor(CoreCursorType.Arrow, 0);
 #endif
+
+		/// <summary>
+		/// Gets a value that indicates whether the window is visible.
+		/// </summary>
+		public bool Visible { get; internal set; }
+
+		/// <summary>
+		/// Gets a value that indicates the activation state of the window.
+		/// </summary>
+		public CoreWindowActivationMode ActivationMode { get; private set; } = CoreWindowActivationMode.None;
+
+		internal IPointerEventArgs? LastPointerEvent { get; set; }
+
+		/// <summary>
+		/// Gets the CoreWindow instance for the currently active thread.
+		/// </summary>
+		/// <returns>The CoreWindow for the currently active thread.</returns>
+		public static CoreWindow? GetForCurrentThread()
+			=> _current; // UWP returns 'null' if on a BG thread
 
 		[Uno.NotImplemented]
 		public CoreVirtualKeyStates GetAsyncKeyState(System.VirtualKey virtualKey)
@@ -54,17 +94,55 @@ namespace Windows.UI.Core
 		public CoreVirtualKeyStates GetKeyState(System.VirtualKey virtualKey)
 			=> CoreVirtualKeyStates.None;
 
-		internal void SetLastPointerEvent(IPointerEventArgs args)
-			=> _lastPointerEventArgs = args;
+		internal static void SetInvalidateRender(Action invalidateRender)
+			=> _invalidateRender = invalidateRender;
 
-		internal interface IPointerEventArgs
+		internal static void QueueInvalidateRender()
+			=> _invalidateRender?.Invoke();
+
+		partial void InitializePartial();
+
+		internal void OnActivated(WindowActivatedEventArgs args)
 		{
-			Point GetLocation();
+			_lastActivationState = args.WindowActivationState;
+
+			if (this.Log().IsEnabled(LogLevel.Debug))
+			{
+				this.Log().LogDebug($"CoreWindow activating with {_lastActivationState} state.");
+			}
+
+			UpdateActivationMode();
+
+			Activated?.Invoke(this, args);
 		}
 
 		internal void OnSizeChanged(WindowSizeChangedEventArgs windowSizeChangedEventArgs)
+			=> SizeChanged?.Invoke(this, windowSizeChangedEventArgs);
+
+		internal interface IPointerEventArgs
 		{
-			SizeChanged?.Invoke(this, windowSizeChangedEventArgs);
+			PointerPoint GetLocation(object? relativeTo);
+		}
+
+		internal void OnVisibilityChanged(VisibilityChangedEventArgs visibilityChangedEventArgs)
+		{
+			UpdateActivationMode();
+
+			VisibilityChanged?.Invoke(this, visibilityChangedEventArgs);
+		}
+
+		private void UpdateActivationMode()
+		{
+			if (_lastActivationState == CoreWindowActivationState.Deactivated)
+			{
+				ActivationMode = CoreWindowActivationMode.Deactivated;
+			}
+			else
+			{
+				ActivationMode = Visible ?
+					CoreWindowActivationMode.ActivatedInForeground :
+					CoreWindowActivationMode.ActivatedNotForeground;
+			}
 		}
 	}
 }

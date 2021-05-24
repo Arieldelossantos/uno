@@ -82,8 +82,10 @@ namespace <#= mixin.NamespaceName #>
 		public double ActualWidth => GetActualWidth();
 		public double ActualHeight => GetActualHeight();
 
+#if !<#= mixin.IsFrameworkElement #>
 		private protected virtual double GetActualWidth() => _actualSize.Width;
 		private protected virtual double GetActualHeight() => _actualSize.Height;
+#endif		
 
 #if !<#= mixin.IsFrameworkElement #>
 		/// <summary>
@@ -750,7 +752,6 @@ namespace <#= mixin.NamespaceName #>
 			OnLoadingPartial();
 			Loading?.Invoke(this, null);
 			OnPostLoading();
-			ApplyCompiledBindings();
 		}
 		
 		partial void OnLoadingPartial();

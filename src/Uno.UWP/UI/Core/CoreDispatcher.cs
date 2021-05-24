@@ -159,8 +159,6 @@ namespace Windows.UI.Core
 		/// <remarks>Can only be invoked on the UI thread</remarks>
 		internal UIAsyncOperation RunAsync(CoreDispatcherPriority priority, CancellableDispatchedHandler handler)
 		{
-			CoreDispatcher.CheckThreadAccess();
-
 			UIAsyncOperation? operation = null;
 
 			void nonCancellableHandler()
@@ -209,7 +207,7 @@ namespace Windows.UI.Core
 					EventOpcode.Send,
 					new[] {
 						((int)priority).ToString(),
-						handler.Method.DeclaringType.FullName + "." + handler.Method.DeclaringType.Name
+						handler.Method.DeclaringType?.FullName + "." + handler.Method.DeclaringType?.Name
 					}
 				);
 			}

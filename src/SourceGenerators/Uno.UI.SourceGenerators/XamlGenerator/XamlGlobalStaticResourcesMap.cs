@@ -1,4 +1,6 @@
-﻿using Uno.Extensions;
+﻿#nullable enable
+
+using Uno.Extensions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,7 +20,7 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 		{
 		}
 
-		internal StaticResourceDefinition FindResource(string resourceKey)
+		internal StaticResourceDefinition? FindResource(string resourceKey)
 		{
 			var list = GetListForKey(resourceKey);
 
@@ -38,7 +40,7 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 		/// <param name="initialFiles">File names of the ResourceDictionaries whose properties should be returned first.</param>
 		/// <param name="ignoredFiles">Files which shouldn't be included in the default system resources</param>
 		/// <remarks>This is used when building Uno.UI itself to create a master dictionary of system resources.</remarks>
-		internal IEnumerable<string> GetAllDictionaryProperties(string[] initialFiles, string[] ignoredFiles)
+		internal IEnumerable<string> GetAllDictionaryProperties(string[] initialFiles)
 		{
 			var initialProperties = initialFiles.Select(f =>
 					_rdMap.First(kvp =>
@@ -50,7 +52,6 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 			return initialProperties.Concat(
 					_rdMap.Except(initialProperties)
 				)
-				.Where(kvp => ignoredFiles.None(ignoredFile => kvp.Key.EndsWith(ignoredFile)))
 				.Select(kvp => ConvertIdToResourceDictionaryProperty(kvp.Value.UniqueID));
 		}
 
@@ -59,7 +60,7 @@ namespace Uno.UI.SourceGenerators.XamlGenerator
 		/// </summary>
 		/// <param name="originDictionary">The file containing the XAML</param>
 		/// <param name="source">The ResourceDictionary.Source value</param>
-		internal string FindTargetPropertyForMergedDictionarySource(XamlFileDefinition originDictionary, string source)
+		internal string? FindTargetPropertyForMergedDictionarySource(XamlFileDefinition originDictionary, string source)
 		{
 			var targetSource = GetSourceLink(originDictionary);
 			var absoluteSource = ResolveAbsoluteSource(targetSource, source);

@@ -1,8 +1,13 @@
-﻿using SkiaSharp;
+﻿#nullable enable
+
+using Microsoft.Extensions.Logging;
+using SkiaSharp;
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Uno;
+using Uno.Extensions;
 using Uno.UI.Xaml;
 using Windows.Foundation;
 using Windows.Storage;
@@ -20,6 +25,9 @@ namespace Windows.UI.Composition
 				(nm, wt, wh, sl) => FromFamilyName(nm, wt, wh, sl));
 
 		private readonly TextBlock _owner;
+
+		private string? _previousRenderText;
+		private string[]? _textLines;
 
 		private static SKTypeface FromFamilyName(
 			string name,
@@ -39,7 +47,25 @@ namespace Windows.UI.Composition
 			}
 			else
 			{
-				return SKTypeface.FromFamilyName(name, weight, width, slant);
+				if (string.Equals(name, "XamlAutoFontFamily", StringComparison.OrdinalIgnoreCase))
+				{
+					return SKTypeface.FromFamilyName(null, weight, width, slant);
+				}
+
+				var typeFace = SKTypeface.FromFamilyName(name, weight, width, slant);
+
+				// FromFontFamilyName may return null: https://github.com/mono/SkiaSharp/issues/1058
+				if (typeFace == null)
+				{
+					if (typeof(TextVisual).Log().IsEnabled(LogLevel.Warning))
+					{
+						typeof(TextVisual).Log().LogWarning($"The font {name} could not be found, using system default");
+					}
+
+					typeFace = SKTypeface.FromFamilyName(null, weight, width, slant);
+				}
+
+				return typeFace;
 			}
 		}
 
@@ -77,12 +103,21 @@ namespace Windows.UI.Composition
 
 			var lineHeight = descent - ascent;
 
+			if (_textLines == null || _previousRenderText != _owner.Text)
+			{
+				_textLines = _owner.Text.Split(
+					new[] { "\r\n", "\r", "\n" },
+					StringSplitOptions.None
+				);
+				_previousRenderText = _owner.Text;
+			}
+
 			var bounds = new SKRect(0, 0, (float)availableSize.Width, (float)availableSize.Height);
 			_paint.MeasureText(string.IsNullOrEmpty(_owner.Text) ? " " : _owner.Text, ref bounds);
 
 			var size = bounds.Size;
 
-			size.Height = lineHeight;
+			size.Height = lineHeight * _textLines.Length;
 
 			return new Size(size.Width, size.Height);
 		}
@@ -113,7 +148,15 @@ namespace Windows.UI.Composition
 
 				var lineHeight = descent - ascent;
 
-				surface.Canvas.DrawText(_owner.Text, 0, Size.Y-descent, _paint);
+				_textLines ??= new[] {_owner.Text};
+
+				var y = -ascent;
+
+				foreach (var line in _textLines)
+				{
+					surface.Canvas.DrawText(line, 0, y, _paint);
+					y += lineHeight;
+				}
 			}
 		}
 	}

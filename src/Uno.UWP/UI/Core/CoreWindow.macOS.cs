@@ -8,21 +8,41 @@ using Uno.Extensions;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 using Windows.Foundation.Metadata;
+using Uno.Foundation.Extensibility;
 
 namespace Windows.UI.Core
 {
-	public partial class CoreWindow 
+	partial class CoreWindow
 	{
-        private readonly NSWindow _window;
+		private readonly NSWindow _window;
 
+		public CoreWindow(NSWindow window)
+			: this()
+		{
+			_window = window;
+		}
+
+		/// <summary>
+		/// Gets a reference to the native macOS Window behind the <see cref="CoreWindow"/> abstraction.
+		/// </summary>
+		internal NSWindow NativeWindow => _window;
+
+		internal void RefreshCursor()
+		{
+			if (_coreWindowExtension is { })
+			{
+				_coreWindowExtension.PointerCursor = _coreWindowExtension.PointerCursor;
+			}
+		}
+	}
+
+
+	internal partial class CoreWindowExtension : ICoreWindowExtension
+	{
 		private bool _cursorHidden = false;
 		private CoreCursor _pointerCursor = new CoreCursor(CoreCursorType.Arrow, 0);
 
-		public CoreWindow(NSWindow window) : this()
-        {
-            _window = window;			
-        }
-
+		/// <inheritdoc />
 		public CoreCursor PointerCursor
 		{
 			get => _pointerCursor;
@@ -33,7 +53,13 @@ namespace Windows.UI.Core
 			}
 		}
 
-		internal void RefreshCursor()
+		/// <inheritdoc />
+		public void ReleasePointerCapture() { }
+
+		/// <inheritdoc />
+		public void SetPointerCapture() { }
+
+		private void RefreshCursor()
 		{
 			if (PointerCursor == null)
 			{
@@ -43,7 +69,8 @@ namespace Windows.UI.Core
 					_cursorHidden = true;
 				}
 			}
-			else {
+			else
+			{
 				if (_cursorHidden)
 				{
 					NSCursor.Unhide();

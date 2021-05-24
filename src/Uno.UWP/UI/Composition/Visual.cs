@@ -15,7 +15,7 @@ namespace Windows.UI.Composition
 		private float _rotationAngleInDegrees;
 		private Vector3 _rotationAxis = new Vector3(0, 0, 1);
 		private Matrix4x4 transformMatrix = Matrix4x4.Identity;
-		private bool isVisible;
+		private bool isVisible = true;
 		private float opacity = 1.0f;
 
 		internal Visual(Compositor compositor) : base(compositor)
@@ -27,7 +27,8 @@ namespace Windows.UI.Composition
 
 		public Matrix4x4 TransformMatrix
 		{
-			get => transformMatrix; set
+			get => transformMatrix;
+			set
 			{
 				transformMatrix = value;
 				Compositor.InvalidateRender();
@@ -35,7 +36,7 @@ namespace Windows.UI.Composition
 		}
 		public Vector3 Offset
 		{
-			get { return _offset; }
+			get => _offset;
 			set
 			{
 				_offset = value;
@@ -48,7 +49,8 @@ namespace Windows.UI.Composition
 
 		public bool IsVisible
 		{
-			get => isVisible; set
+			get => isVisible;
+			set
 			{
 				isVisible = value;
 				Compositor.InvalidateRender();
@@ -59,7 +61,7 @@ namespace Windows.UI.Composition
 
 		public Vector3 CenterPoint
 		{
-			get { return _centerPoint; }
+			get => _centerPoint;
 			set
 			{
 				_centerPoint = value; OnCenterPointChanged(value);
@@ -71,10 +73,11 @@ namespace Windows.UI.Composition
 
 		public global::System.Numerics.Vector3 Scale
 		{
-			get { return _scale; }
+			get => _scale;
 			set
 			{
-				_scale = value; OnScaleChanged(value);
+				_scale = value;
+				OnScaleChanged(value);
 				Compositor.InvalidateRender();
 			}
 		}
@@ -83,7 +86,7 @@ namespace Windows.UI.Composition
 
 		public float RotationAngleInDegrees
 		{
-			get { return _rotationAngleInDegrees; }
+			get => _rotationAngleInDegrees;
 			set
 			{
 				_rotationAngleInDegrees = value; OnRotationAngleInDegreesChanged(value);
@@ -95,7 +98,7 @@ namespace Windows.UI.Composition
 
 		public Vector2 Size
 		{
-			get { return _size; }
+			get => _size;
 			set
 			{
 				_size = value; OnSizeChanged(value);
@@ -115,7 +118,7 @@ namespace Windows.UI.Composition
 		}
 		public Vector3 RotationAxis
 		{
-			get { return _rotationAxis; }
+			get => _rotationAxis;
 			set
 			{
 				_rotationAxis = value; OnRotationAxisChanged(value);

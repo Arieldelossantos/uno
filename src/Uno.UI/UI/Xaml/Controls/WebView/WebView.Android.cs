@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Uno.UI;
 using Uno.Logging;
 using Uno.Disposables;
+using Windows.Foundation;
 
 namespace Windows.UI.Xaml.Controls
 {
@@ -133,7 +134,8 @@ namespace Windows.UI.Xaml.Controls
 			}
 
 			_wasLoadedFromString = true;
-			_webView.LoadData(text, "text/html; charset=utf-8", "utf-8");
+			//Note : _webView.LoadData does not work properly on Android 10 even when we encode to base64.
+			_webView.LoadDataWithBaseURL(null, text, "text/html; charset=utf-8", "utf-8", null);
 		}
 
 		//This should be IAsyncOperation<string> instead of Task<string> but we use an extension method to enable the same signature in Win.
@@ -151,6 +153,10 @@ namespace Windows.UI.Xaml.Controls
 
 			return await tcs.Task;
 		}
+
+		public IAsyncOperation<string> InvokeScriptAsync(string scriptName, IEnumerable<string> arguments) =>
+			AsyncOperation.FromTask(ct => InvokeScriptAsync(ct, scriptName, arguments?.ToArray()));
+			
 
 		#region Navigation History
 

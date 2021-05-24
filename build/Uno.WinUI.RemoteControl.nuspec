@@ -12,12 +12,12 @@
     <iconUrl>https://nv-assets.azurewebsites.net/logos/uno.png</iconUrl>
     <description>Remote Control module for Uno Platform projects, such as XAML Hot Reload.</description>
     <copyright>Copyright (C) 2015-2019 nventive inc. - all rights reserved</copyright>
-    <repository type="git" url="https://github.com/unoplatform/uno.git" />
+    <repository type="git" url="https://github.com/unoplatform/uno.git" branch="$branch$" commit="$commitid$" />
 
     <dependencies>
 
 	  <!-- Android 9.0 -->
-	  <group targetFramework="MonoAndroid90">
+	  <group targetFramework="MonoAndroid11.0">
 		<dependency id="Uno.WinUI" version="1.29.0-dev.93" />
 
 		<dependency id="Newtonsoft.Json" version="12.0.2" />
@@ -49,7 +49,7 @@
         <dependency id="Uno.WinUI" version="1.29.0-dev.93" />
 
         <dependency id="Newtonsoft.Json" version="12.0.2" />
-        <dependency id="Uno.Wasm.WebSockets" version="1.0.0-dev.30" />
+        <dependency id="Uno.Wasm.WebSockets" version="1.1.0" />
       </group>
     </dependencies>
 
@@ -70,7 +70,7 @@
       </group>
 
 	  <!-- Android 9.0 -->
-	  <group targetFramework="MonoAndroid90">
+	  <group targetFramework="MonoAndroid11.0">
 		<reference file="Uno.UI.RemoteControl.dll" />
 	  </group>
 
@@ -87,8 +87,8 @@
     <file src="..\src\Uno.UI.RemoteControl\bin\Release\netstandard2.0\Uno.UI.RemoteControl.dll" target="lib\netstandard2.0" />
     <file src="..\src\Uno.UI.RemoteControl\bin\Release\netstandard2.0\Uno.UI.RemoteControl.pdb" target="lib\netstandard2.0" />
 
-	<file src="..\src\Uno.UI.RemoteControl\bin\Release\MonoAndroid90\Uno.UI.RemoteControl.dll" target="lib\MonoAndroid90" />
-	<file src="..\src\Uno.UI.RemoteControl\bin\Release\MonoAndroid90\Uno.UI.RemoteControl.pdb" target="lib\MonoAndroid90" />
+	<file src="..\src\Uno.UI.RemoteControl\bin\Release\MonoAndroid11.0\Uno.UI.RemoteControl.dll" target="lib\MonoAndroid11.0" />
+	<file src="..\src\Uno.UI.RemoteControl\bin\Release\MonoAndroid11.0\Uno.UI.RemoteControl.pdb" target="lib\MonoAndroid11.0" />
 
 	<file src="..\src\Uno.UI.RemoteControl\bin\Release\MonoAndroid10.0\Uno.UI.RemoteControl.dll" target="lib\MonoAndroid10.0" />
 	<file src="..\src\Uno.UI.RemoteControl\bin\Release\MonoAndroid10.0\Uno.UI.RemoteControl.pdb" target="lib\MonoAndroid10.0" />
@@ -98,6 +98,10 @@
 
 	<file src="..\src\Uno.UI.RemoteControl\bin\Release\xamarinmac20\Uno.UI.RemoteControl.dll" target="lib\xamarinmac20" />
 	<file src="..\src\Uno.UI.RemoteControl\bin\Release\xamarinmac20\Uno.UI.RemoteControl.pdb" target="lib\xamarinmac20" />
+
+	<!-- Processors -->
+	<file src="..\src\Uno.UI.RemoteControl.Server.Processors\bin\Release\netcoreapp3.1\Uno.UI.RemoteControl.Server.Processors.dll" target="tools\rc\processors" />
+	<file src="..\src\Uno.UI.RemoteControl.Server.Processors\bin\Release\netcoreapp3.1\Uno.UI.RemoteControl.Server.Processors.pdb" target="tools\rc\processors" />
 
 	<!-- Build targets -->
 	<file src="..\src\Uno.UI.RemoteControl\buildTransitive\*" target="buildTransitive" />

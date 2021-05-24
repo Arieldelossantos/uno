@@ -1,4 +1,6 @@
-﻿$ErrorActionPreference = 'Stop'
+﻿Set-PSDebug -Trace 1
+
+$ErrorActionPreference = 'Stop'
 
 function Assert-ExitCodeIsZero()
 {
@@ -9,28 +11,34 @@ function Assert-ExitCodeIsZero()
 }
 
 function Get-TemplateConfiguration(
-    [bool]$uwp = $false,
     [bool]$android = $false,
     [bool]$iOS = $false,
     [bool]$macOS = $false,
     [bool]$wasm = $false,
+    [bool]$skiaGtk = $false,
+    [bool]$skiaWpf = $false,
+    [bool]$skiaTizen = $false,
     [bool]$wasmVsCode = $false)
 {
-    $uwpFlag = '-uwp'
     $androidFlag = '-android'
     $iOSFlag = '-ios'
     $macOSFlag = '-macos'
     $wasmFlag = '-wasm'
     $wasmVsCodeFlag = '--vscodeWasm'
+    $skiaWpfFlag = '--skia-wpf'
+    $skiaGtkFlag = '--skia-gtk'
+    $skiaTizenFlag = '--skia-tizen'
 
-    $a = If ($uwp)        { $uwpFlag }        Else { $uwpFlag        + '=false' }
-    $b = If ($android)    { $androidFlag }    Else { $androidFlag    + '=false' }
-    $c = If ($iOS)        { $iOSFlag }        Else { $iOSFlag        + '=false' }
-    $d = If ($macOS)      { $macOSFlag }      Else { $macOSFlag      + '=false' }
-    $e = If ($wasm)       { $wasmFlag }       Else { $wasmFlag       + '=false' }
-    $f = If ($wasmVsCode) { $wasmVsCodeFlag } Else { $wasmVsCodeFlag + '=false' }
+    $a = If ($android)    { $androidFlag }    Else { $androidFlag    + '=false' }
+    $b = If ($iOS)        { $iOSFlag }        Else { $iOSFlag        + '=false' }
+    $c = If ($macOS)      { $macOSFlag }      Else { $macOSFlag      + '=false' }
+    $d = If ($wasm)       { $wasmFlag }       Else { $wasmFlag       + '=false' }
+    $e = If ($wasmVsCode) { $wasmVsCodeFlag } Else { $wasmVsCodeFlag + '=false' }
+    $f = If ($skiaWpf)    { $skiaWpfFlag    } Else { $skiaWpfFlag    + '=false' }
+    $g = If ($skiaGtk)    { $skiaGtkFlag    } Else { $skiaGtkFlag    + '=false' }
+    $h = If ($skiaTizen)  { $skiaTizenFlag  } Else { $skiaTizenFlag  + '=false' }
 
-    @($a, $b, $c, $d, $e, $f)
+    @($a, $b, $c, $d, $e, $f, $g, $h)
 }
 
 $msbuild = vswhere -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe
@@ -46,11 +54,14 @@ $releaseIPhoneSimulator = $release + '/p:Platform=iPhoneSimulator'
 
 $templateConfigurations =
 @(
-    (Get-TemplateConfiguration -uwp 1),
+    (Get-TemplateConfiguration),
     (Get-TemplateConfiguration -android 1),
     (Get-TemplateConfiguration -iOS 1),
     (Get-TemplateConfiguration -macOS 1),
-    (Get-TemplateConfiguration -wasm 1)
+    (Get-TemplateConfiguration -wasm 1),
+    (Get-TemplateConfiguration -skiaGtk 1),
+    (Get-TemplateConfiguration -skiaWpf 1),
+    (Get-TemplateConfiguration -skiaTizen 1)
 )
 
 $configurations =
@@ -59,7 +70,10 @@ $configurations =
     @($templateConfigurations[1], $release),
     @($templateConfigurations[2], $releaseIPhone),
     @($templateConfigurations[3], $releaseIPhoneSimulator),
-    @($templateConfigurations[4], $release)
+    @($templateConfigurations[4], $release),
+    @($templateConfigurations[5], $release),
+    @($templateConfigurations[6], $release),
+    @($templateConfigurations[7], $release)
 )
 
 # Default
@@ -77,7 +91,7 @@ for($i = 0; $i -lt $configurations.Length; $i++)
 
 # VS Code
 dotnet new unoapp -n UnoAppVsCode (Get-TemplateConfiguration -wasm 1 -wasmVsCode 1)
-dotnet build -p:RestoreConfigFile=$env:NUGET_CI_CONFIG UnoAppVsCode\UnoAppVsCode.sln
+dotnet build -p:RestoreConfigFile=$env:NUGET_CI_CONFIG UnoAppVsCode\UnoAppVsCode.Wasm\UnoAppVsCode.Wasm.csproj
 Assert-ExitCodeIsZero
 
 # Namespace Tests
@@ -104,12 +118,16 @@ dotnet new unoapp-winui -n UnoAppWinUI
 & $msbuild $debug UnoAppWinUI\UnoAppWinUI.sln
 Assert-ExitCodeIsZero
 
-# XF - Default
-7z x build\assets\xfapp-uwp-4.5.0.356.zip -oXFApp
+# UI Tests template
+dotnet new unoapp-uitest -o UnoUITests01
+& $msbuild $debug UnoUITests01\UnoUITests01.csproj
+Assert-ExitCodeIsZero
 
-cd XFApp
+# XF - Default
+7z x build\assets\xfapp-uwp-4.8.0.1451.zip -oXFApp
+
+pushd XFApp
 dotnet new wasmxfhead
 & $msbuild /ds /r /p:Configuration=Debug XFApp.Wasm\XFApp.Wasm.csproj
 Assert-ExitCodeIsZero
-
-cd ..
+popd

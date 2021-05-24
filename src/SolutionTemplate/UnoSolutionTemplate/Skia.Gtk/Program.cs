@@ -2,7 +2,7 @@
 using GLib;
 using Uno.UI.Runtime.Skia;
 
-namespace UnoQuickStart.Skia.Gtk
+namespace $ext_safeprojectname$.Skia.Gtk
 {
 	class Program
 	{
@@ -13,8 +13,6 @@ namespace UnoQuickStart.Skia.Gtk
 				Console.WriteLine("GLIB UNHANDLED EXCEPTION" + expArgs.ExceptionObject.ToString());
 				expArgs.ExitApplication = true;
 			};
-
-			Windows.ApplicationModel.Resources.ResourceLoader.GetStringInternal = s => null;
 
 			var host = new GtkHost(() => new App(), args);
 

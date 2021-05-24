@@ -1,20 +1,38 @@
-﻿using System;
+﻿#nullable enable
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Uno.Extensions;
-using Uno.SourceGeneration;
 using Uno.UI.SourceGenerators.Helpers;
 using Uno.UI.SourceGenerators.XamlGenerator;
+using Uno.Roslyn;
+using System.Diagnostics;
+using System.Reflection;
+using System.IO;
+
+#if NETFRAMEWORK
+using Uno.SourceGeneration;
+#endif
 
 namespace Uno.UI.SourceGenerators.DependencyObject
 {
-	public class DependencyObjectGenerator : SourceGenerator
+	[Generator]
+	public class DependencyObjectGenerator : ISourceGenerator
 	{
-		public override void Execute(SourceGeneratorContext context)
+		public void Initialize(GeneratorInitializationContext context)
 		{
+			// Debugger.Launch();
+			// No initialization required for this one
+			DependenciesInitializer.Init();
+		}
+
+		public void Execute(GeneratorExecutionContext context)
+		{
+
 			if (PlatformHelper.IsValidPlatform(context))
 			{
 				var visitor = new SerializationMethodsGenerator(context);
@@ -24,20 +42,20 @@ namespace Uno.UI.SourceGenerators.DependencyObject
 
 		private class SerializationMethodsGenerator : SymbolVisitor
 		{
-			private readonly SourceGeneratorContext _context;
-			private readonly INamedTypeSymbol _dependencyObjectSymbol;
-			private readonly INamedTypeSymbol _unoViewgroupSymbol;
-			private readonly INamedTypeSymbol _iosViewSymbol;
-			private readonly INamedTypeSymbol _macosViewSymbol;
-			private readonly INamedTypeSymbol _androidViewSymbol;
-			private readonly INamedTypeSymbol _javaObjectSymbol;
-			private readonly INamedTypeSymbol _androidActivitySymbol;
-			private readonly INamedTypeSymbol _androidFragmentSymbol;
-			private readonly INamedTypeSymbol _bindableAttributeSymbol;
-			private readonly INamedTypeSymbol _iFrameworkElementSymbol;
+			private readonly GeneratorExecutionContext _context;
+			private readonly INamedTypeSymbol? _dependencyObjectSymbol;
+			private readonly INamedTypeSymbol? _unoViewgroupSymbol;
+			private readonly INamedTypeSymbol? _iosViewSymbol;
+			private readonly INamedTypeSymbol? _macosViewSymbol;
+			private readonly INamedTypeSymbol? _androidViewSymbol;
+			private readonly INamedTypeSymbol? _javaObjectSymbol;
+			private readonly INamedTypeSymbol? _androidActivitySymbol;
+			private readonly INamedTypeSymbol? _androidFragmentSymbol;
+			private readonly INamedTypeSymbol? _bindableAttributeSymbol;
+			private readonly INamedTypeSymbol? _iFrameworkElementSymbol;
 
 
-			public SerializationMethodsGenerator(SourceGeneratorContext context)
+			public SerializationMethodsGenerator(GeneratorExecutionContext context)
 			{
 				_context = context;
 
@@ -85,8 +103,8 @@ namespace Uno.UI.SourceGenerators.DependencyObject
 
 			private void ProcessType(INamedTypeSymbol typeSymbol)
 			{
-				var isDependencyObject = typeSymbol.Interfaces.Any(t => Equals(t, _dependencyObjectSymbol))
-					&& (typeSymbol.BaseType?.GetAllInterfaces().None(t => Equals(t, _dependencyObjectSymbol)) ?? true);
+				var isDependencyObject = typeSymbol.Interfaces.Any(t => SymbolEqualityComparer.Default.Equals(t, _dependencyObjectSymbol))
+					&& (typeSymbol.BaseType?.GetAllInterfaces().None(t => SymbolEqualityComparer.Default.Equals(t, _dependencyObjectSymbol)) ?? true);
 
 				if (isDependencyObject && typeSymbol.TypeKind == TypeKind.Class)
 				{
@@ -115,7 +133,7 @@ namespace Uno.UI.SourceGenerators.DependencyObject
 
 					using (builder.BlockInvariant($"namespace {typeSymbol.ContainingNamespace}"))
 					{
-						if (typeSymbol.FindAttribute(_bindableAttributeSymbol) == null)
+						if (_bindableAttributeSymbol != null && typeSymbol.FindAttribute(_bindableAttributeSymbol) == null)
 						{
 							builder.AppendLineInvariant(@"[global::Windows.UI.Xaml.Data.Bindable]");
 						}
@@ -130,11 +148,11 @@ namespace Uno.UI.SourceGenerators.DependencyObject
 						}
 					}
 
-					_context.AddCompilationUnit(HashBuilder.BuildIDFromSymbol(typeSymbol), builder.ToString());
+					_context.AddSource(HashBuilder.BuildIDFromSymbol(typeSymbol), builder.ToString());
 				}
 			}
 
-			private IDisposable GenerateNestingContainers(IndentedStringBuilder builder, INamedTypeSymbol typeSymbol)
+			private IDisposable GenerateNestingContainers(IndentedStringBuilder builder, INamedTypeSymbol? typeSymbol)
 			{
 				var disposables = new List<IDisposable>();
 
@@ -268,7 +286,7 @@ namespace Uno.UI.SourceGenerators.DependencyObject
 				var isAndroidActivity = typeSymbol.Is(_androidActivitySymbol);
 				var isAndroidFragment = typeSymbol.Is(_androidFragmentSymbol);
 				var isUnoViewGroup = typeSymbol.Is(_unoViewgroupSymbol);
-				var implementsIFrameworkElement = typeSymbol.Interfaces.Any(t => Equals(t, _iFrameworkElementSymbol));
+				var implementsIFrameworkElement = typeSymbol.Interfaces.Any(t => SymbolEqualityComparer.Default.Equals(t, _iFrameworkElementSymbol));
 				var hasOverridesAttachedToWindowAndroid = isAndroidView &&
 					typeSymbol
 					.GetMethods()
@@ -310,7 +328,7 @@ namespace Uno.UI.SourceGenerators.DependencyObject
 #if {implementsIFrameworkElement} //Is IFrameworkElement
 						OnLoading();
 						OnLoaded();
-#endif						
+#endif
 						_loadActions.ForEach(a => a.Item1());
 						BinderAttachedToWindow();
 					}}
@@ -543,19 +561,33 @@ namespace Uno.UI.SourceGenerators.DependencyObject
 
 					partial void UpdateBinderDetails();
 
+					/// <summary>
+					/// Obsolete method kept for binary compatibility
+					/// </summary>
+					[global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
+					[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 					public void ClearBindings()
 					{{
 						__Store.ClearBindings();
 					}}
 
+					/// <summary>
+					/// Obsolete method kept for binary compatibility
+					/// </summary>
+					[global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
+					[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 					public void RestoreBindings()
 					{{
 						__Store.RestoreBindings();
 					}}
 
+					/// <summary>
+					/// Obsolete method kept for binary compatibility
+					/// </summary>
+					[global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]
+					[global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
 					public void ApplyCompiledBindings()
 					{{
-						__Store.ApplyCompiledBindings();
 					}}
 
 					private global::Uno.UI.DataBinding.ManagedWeakReference _selfWeakReference;

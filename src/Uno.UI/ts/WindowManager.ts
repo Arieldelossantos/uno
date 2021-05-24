@@ -28,7 +28,7 @@ namespace Uno.UI {
 
 		private static readonly unoRootClassName = "uno-root-element";
 		private static readonly unoUnarrangedClassName = "uno-unarranged";
-		private static readonly unoClippedToBoundsClassName = "uno-clippedToBounds";
+		private static readonly unoCollapsedClassName = "uno-visibility-collapsed";
 
 		private static _cctor = (() => {
 			WindowManager.initMethods();
@@ -259,7 +259,7 @@ namespace Uno.UI {
 			element.setAttribute("XamlType", uiElementRegistration.typeName);
 			element.setAttribute("XamlHandle", this.handleToString(contentDefinition.handle));
 			if (uiElementRegistration.isFrameworkElement) {
-				this.setAsUnarranged(element);
+				this.setAsUnarranged(element, true);
 			}
 			if (element.hasOwnProperty("tabindex")) {
 				(element as any)["tabindex"] = contentDefinition.isFocusable ? 0 : -1;
@@ -363,6 +363,31 @@ namespace Uno.UI {
 
 		private setXUidInternal(elementId: number, name: string): void {
 			this.getView(elementId).setAttribute("xuid", name);
+		}
+
+		/**
+			* Sets the visibility of the specified element
+			*/
+		public setVisibility(elementId: number, visible: boolean): string {
+			this.setVisibilityInternal(elementId, visible);
+			return "ok";
+		}
+
+		public setVisibilityNative(pParam: number): boolean {
+			const params = WindowManagerSetVisibilityParams.unmarshal(pParam);
+			this.setVisibilityInternal(params.HtmlId, params.Visible);
+			return true;
+		}
+
+		private setVisibilityInternal(elementId: number, visible: boolean): void {
+			const element = this.getView(elementId);
+
+			if (visible) {
+				element.classList.remove(WindowManager.unoCollapsedClassName);
+			}
+			else {
+				element.classList.add(WindowManager.unoCollapsedClassName);
+			}
 		}
 
 		/**
@@ -550,11 +575,10 @@ namespace Uno.UI {
 			return true;
 		}
 
-		public setArrangeProperties(elementId: number, clipToBounds: boolean): string {
+		public setArrangeProperties(elementId: number): string {
 			const element = this.getView(elementId);
 
 			this.setAsArranged(element);
-			this.setClipToBounds(element, clipToBounds);
 
 			return "ok";
 		}
@@ -662,26 +686,89 @@ namespace Uno.UI {
 			}
 
 			this.setAsArranged(element);
-			this.setClipToBounds(element, params.ClipToBounds);
 
 			return true;
 		}
 
 		private setAsArranged(element: HTMLElement | SVGElement) {
 
-			element.classList.remove(WindowManager.unoUnarrangedClassName);
-		}
-
-		private setAsUnarranged(element: HTMLElement | SVGElement) {
-			element.classList.add(WindowManager.unoUnarrangedClassName);
-		}
-
-		private setClipToBounds(element: HTMLElement | SVGElement, clipToBounds: boolean) {
-			if (clipToBounds) {
-				element.classList.add(WindowManager.unoClippedToBoundsClassName);
-			} else {
-				element.classList.remove(WindowManager.unoClippedToBoundsClassName);
+			if (!(<any>element)._unoIsArranged) {
+				(<any>element)._unoIsArranged = true;
+				element.classList.remove(WindowManager.unoUnarrangedClassName);
 			}
+		}
+
+		private setAsUnarranged(element: HTMLElement | SVGElement, force: boolean = false) {
+			if ((<any>element)._unoIsArranged || force) {
+				(<any>element)._unoIsArranged = false;
+				element.classList.add(WindowManager.unoUnarrangedClassName);
+			}
+		}
+
+		/**
+		* Sets the color property of the specified element
+		*/
+		public setElementColor(elementId: number, color: number): string {
+			this.setElementColorInternal(elementId, color);
+			return "ok";
+		}
+
+		public setElementColorNative(pParam: number): boolean {
+			const params = WindowManagerSetElementColorParams.unmarshal(pParam);
+			this.setElementColorInternal(params.HtmlId, params.Color);
+			return true;
+		}
+
+		private setElementColorInternal(elementId: number, color: number): void {
+			const element = this.getView(elementId);
+
+			element.style.setProperty("color", this.numberToCssColor(color));
+		}
+
+		/**
+		* Sets the background color property of the specified element
+		*/
+		public setElementBackgroundColor(pParam: number): boolean {
+			const params = WindowManagerSetElementBackgroundColorParams.unmarshal(pParam);
+
+			const element = this.getView(params.HtmlId);
+			const style = element.style;
+
+			style.setProperty("background-color", this.numberToCssColor(params.Color));
+			style.removeProperty("background-image");
+
+			return true;
+		}
+
+		/**
+		* Sets the background image property of the specified element
+		*/
+		public setElementBackgroundGradient(pParam: number): boolean {
+			const params = WindowManagerSetElementBackgroundGradientParams.unmarshal(pParam);
+
+			const element = this.getView(params.HtmlId);
+			const style = element.style;
+
+			style.removeProperty("background-color");
+			style.setProperty("background-image", params.CssGradient);
+
+			return true;
+		}
+
+		/**
+		* Clears the background property of the specified element
+		*/
+		public resetElementBackground(pParam: number): boolean {
+			const params = WindowManagerResetElementBackgroundParams.unmarshal(pParam);
+
+			const element = this.getView(params.HtmlId);
+			const style = element.style;
+
+			style.removeProperty("background-color");
+			style.removeProperty("background-image");
+			style.removeProperty("background-size");
+
+			return true;
 		}
 
 		/**
@@ -699,7 +786,6 @@ namespace Uno.UI {
 			style.transform = matrix;
 
 			this.setAsArranged(element);
-			this.setClipToBounds(element, params.ClipToBounds);
 
 			return true;
 		}
@@ -790,7 +876,7 @@ namespace Uno.UI {
 		}
 
 		public registerPointerEventsOnView(pParams: number): void {
-			const params = WindowManagerRegisterEventOnViewParams.unmarshal(pParams);
+			const params = WindowManagerRegisterPointerEventsOnViewParams.unmarshal(pParams);
 			const element = this.getView(params.HtmlId);
 
 			element.addEventListener("pointerenter", WindowManager.onPointerEnterReceived);
@@ -1401,12 +1487,15 @@ namespace Uno.UI {
 			const element = this.getView(viewId) as HTMLElement;
 
 			const elementStyle = element.style;
+			const elementClasses = element.className;
 			const originalStyleCssText = elementStyle.cssText;
+			const unconstrainedStyleCssText = this.createUnconstrainedStyle(elementStyle, maxWidth, maxHeight);
+
 			let parentElement: HTMLElement = null;
 			let parentElementWidthHeight: { width: string, height: string } = null;
 			let unconnectedRoot: HTMLElement = null;
 
-			let cleanupUnconnectedRoot = function (owner: HTMLDivElement) {
+			let cleanupUnconnectedRoot = (owner: HTMLDivElement) => {
 				if (unconnectedRoot !== null) {
 					owner.removeChild(unconnectedRoot);
 				}
@@ -1427,67 +1516,21 @@ namespace Uno.UI {
 					this.containerElement.appendChild(unconnectedRoot);
 				}
 
-				// As per W3C css-transform spec:
-				// https://www.w3.org/TR/css-transforms-1/#propdef-transform
-				//
-				// > For elements whose layout is governed by the CSS box model, any value other than none
-				// > for the transform property also causes the element to establish a containing block for
-				// > all descendants.Its padding box will be used to layout for all of its
-				// > absolute - position descendants, fixed - position descendants, and descendant fixed
-				// > background attachments.
-				//
-				// We use this feature to allow an measure of text without being influenced by the bounds
-				// of the viewport. We just need to temporary set both the parent width & height to a very big value.
-
-				parentElement = element.parentElement;
-				parentElementWidthHeight = { width: parentElement.style.width, height: parentElement.style.height };
-				parentElement.style.width = WindowManager.MAX_WIDTH;
-				parentElement.style.height = WindowManager.MAX_HEIGHT;
-
-				const updatedStyles = <any>{};
-
-				for (let i = 0; i < elementStyle.length; i++) {
-					const key = elementStyle[i];
-					updatedStyles[key] = elementStyle.getPropertyValue(key);
-				}
-
-				if (updatedStyles.hasOwnProperty("width")) {
-					delete updatedStyles.width;
-				}
-				if (updatedStyles.hasOwnProperty("height")) {
-					delete updatedStyles.height;
-				}
-
-				// This is required for an unconstrained measure (otherwise the parents size is taken into account)
-				updatedStyles.position = "fixed";
-				updatedStyles["max-width"] = Number.isFinite(maxWidth) ? maxWidth + "px" : "none";
-				updatedStyles["max-height"] = Number.isFinite(maxHeight) ? maxHeight + "px" : "none";
-
-				let updatedStyleString = "";
-
-				for (let key in updatedStyles) {
-					if (updatedStyles.hasOwnProperty(key)) {
-						updatedStyleString += key + ": " + updatedStyles[key] + "; ";
-					}
-				}
-
-				// We use a string to prevent the browser to update the element between
-				// each style assignation. This way, the browser will update the element only once.
-				elementStyle.cssText = updatedStyleString;
-
 				if (element instanceof HTMLImageElement) {
+					elementStyle.cssText = unconstrainedStyleCssText;
 					const imgElement = element as HTMLImageElement;
 					return [imgElement.naturalWidth, imgElement.naturalHeight];
-				}
-				else if (element instanceof HTMLInputElement) {
+				} else if (element instanceof HTMLInputElement) {
+					elementStyle.cssText = unconstrainedStyleCssText;
 					const inputElement = element as HTMLInputElement;
 
 					cleanupUnconnectedRoot(this.containerElement);
 
 					// Create a temporary element that will contain the input's content
 					var textOnlyElement = document.createElement("p") as HTMLParagraphElement;
-					textOnlyElement.style.cssText = updatedStyleString;
+					textOnlyElement.style.cssText = unconstrainedStyleCssText;
 					textOnlyElement.innerText = inputElement.value;
+					textOnlyElement.className = elementClasses;
 
 					unconnectedRoot = textOnlyElement;
 					this.containerElement.appendChild(unconnectedRoot);
@@ -1497,8 +1540,49 @@ namespace Uno.UI {
 
 					// Take the width of the inner text, but keep the height of the input element.
 					return [textSize[0], inputSize[1]];
-				}
-				else {
+				} else if (element instanceof HTMLTextAreaElement) {
+					const inputElement = element;
+
+					cleanupUnconnectedRoot(this.containerElement);
+
+					// Create a temporary element that will contain the input's content
+					var textOnlyElement = document.createElement("p") as HTMLParagraphElement;
+					textOnlyElement.style.cssText = unconstrainedStyleCssText;
+
+					// If the input is null or empty, add a no-width character to force the paragraph to take up one line height
+					// The trailing new lines are going to be ignored for measure, so we also append no-width char at the end.
+					textOnlyElement.innerText = inputElement.value ? (inputElement.value + "\u200B") : "\u200B";
+					textOnlyElement.className = elementClasses; // Note: Here we will have the uno-textBoxView class name
+
+					unconnectedRoot = textOnlyElement;
+					this.containerElement.appendChild(unconnectedRoot);
+
+					var textSize = this.measureElement(textOnlyElement);
+
+					// For TextAreas, take the width and height of the inner text
+					const width = Math.min(textSize[0], maxWidth);
+					var height = Math.min(textSize[1], maxHeight);
+					return [width, height];
+				} else {
+					elementStyle.cssText = unconstrainedStyleCssText;
+
+					// As per W3C css-transform spec:
+					// https://www.w3.org/TR/css-transforms-1/#propdef-transform
+					//
+					// > For elements whose layout is governed by the CSS box model, any value other than none
+					// > for the transform property also causes the element to establish a containing block for
+					// > all descendants.Its padding box will be used to layout for all of its
+					// > absolute - position descendants, fixed - position descendants, and descendant fixed
+					// > background attachments.
+					//
+					// We use this feature to allow an measure of text without being influenced by the bounds
+					// of the viewport. We just need to temporary set both the parent width & height to a very big value.
+
+					parentElement = element.parentElement;
+					parentElementWidthHeight = { width: parentElement.style.width, height: parentElement.style.height };
+					parentElement.style.width = WindowManager.MAX_WIDTH;
+					parentElement.style.height = WindowManager.MAX_HEIGHT;
+
 					return this.measureElement(element);
 				}
 			}
@@ -1512,6 +1596,39 @@ namespace Uno.UI {
 
 				cleanupUnconnectedRoot(this.containerElement);
 			}
+		}
+
+		private createUnconstrainedStyle(elementStyle: CSSStyleDeclaration, maxWidth: number, maxHeight: number): string {
+			const updatedStyles = <any>{};
+
+			for (let i = 0; i < elementStyle.length; i++) {
+				const key = elementStyle[i];
+				updatedStyles[key] = elementStyle.getPropertyValue(key);
+			}
+
+			if (updatedStyles.hasOwnProperty("width")) {
+				delete updatedStyles.width;
+			}
+			if (updatedStyles.hasOwnProperty("height")) {
+				delete updatedStyles.height;
+			}
+
+			// This is required for an unconstrained measure (otherwise the parents size is taken into account)
+			updatedStyles.position = "fixed";
+			updatedStyles["max-width"] = Number.isFinite(maxWidth) ? maxWidth + "px" : "none";
+			updatedStyles["max-height"] = Number.isFinite(maxHeight) ? maxHeight + "px" : "none";
+
+			let updatedStyleString = "";
+
+			for (let key in updatedStyles) {
+				if (updatedStyles.hasOwnProperty(key)) {
+					updatedStyleString += key + ": " + updatedStyles[key] + "; ";
+				}
+			}
+
+			// We use a string to prevent the browser to update the element between
+			// each style assignation. This way, the browser will update the element only once.
+			return updatedStyleString;
 		}
 
 		public scrollTo(pParams: number): boolean {
@@ -1858,6 +1975,10 @@ namespace Uno.UI {
 			return handle + "";
 		}
 
+		private numberToCssColor(color: number): string {
+			return "#" + color.toString(16).padStart(8, '0');
+		}
+
 		public setCursor(cssCursor: string): string {
 			const unoBody = document.getElementById(this.containerElementId);
 
@@ -1883,6 +2004,31 @@ namespace Uno.UI {
 			}
 			return "ok";
 		}
+
+		public getNaturalImageSize(imageUrl: string): Promise<string> {
+			return new Promise<string>((resolve, reject) => {
+				const img = new Image();
+
+				let loadingDone = () => {
+					this.containerElement.removeChild(img);
+					resolve(`${img.width};${img.height}`);
+				};
+				let loadingError = (e: Event) => {
+					this.containerElement.removeChild(img);
+					reject(e);
+				}
+
+				img.style.pointerEvents = "none";
+				img.style.opacity = "0";
+				img.onload = loadingDone;
+				img.onerror = loadingError;
+				img.src = imageUrl;
+
+				this.containerElement.appendChild(img);
+
+			});
+		}
+
 	}
 
 	if (typeof define === "function") {

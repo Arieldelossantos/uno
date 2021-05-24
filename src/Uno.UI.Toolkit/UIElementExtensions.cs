@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Reflection;
@@ -11,6 +11,10 @@ using Windows.UI.Xaml.Media;
 using Windows.UI.Xaml.Shapes;
 using Uno.Extensions;
 using Uno.Logging;
+
+#if NETCOREAPP
+using Microsoft.UI;
+#endif
 
 #if __IOS__ || __MACOS__
 using CoreGraphics;
@@ -25,7 +29,7 @@ namespace Uno.UI.Toolkit
 #endif
 	public static class UIElementExtensions
 	{
-		#region Elevation
+#region Elevation
 
 		public static void SetElevation(this UIElement element, double elevation)
 		{
@@ -58,7 +62,7 @@ namespace Uno.UI.Toolkit
 
 #if __IOS__ || __MACOS__
 		internal static void SetElevationInternal(this DependencyObject element, double elevation, Color shadowColor, CGPath path = null)
-#elif NETFX_CORE
+#elif NETFX_CORE || NETCOREAPP
 		internal static void SetElevationInternal(this DependencyObject element, double elevation, Color shadowColor, DependencyObject host = null, CornerRadius cornerRadius = default(CornerRadius))
 #else
 		internal static void SetElevationInternal(this DependencyObject element, double elevation, Color shadowColor)
@@ -79,7 +83,7 @@ namespace Uno.UI.Toolkit
 			if (element is AppKit.NSView view)
 #else
 			if (element is UIKit.UIView view)
-	#endif
+#endif
 			{
 				if (elevation > 0)
 				{
@@ -88,17 +92,17 @@ namespace Uno.UI.Toolkit
 					const float y = 0.92f * 0.5f; // Looks more accurate than the recommended 0.92f.
 					const float blur = 0.5f;
 
-	#if __MACOS__
+#if __MACOS__
 					view.WantsLayer = true;
 					view.Shadow ??= new AppKit.NSShadow();
-	#endif
+#endif
 					view.Layer.MasksToBounds = false;
 					view.Layer.ShadowOpacity = shadowColor.A / 255f;
-	#if __MACOS__
+#if __MACOS__
 					view.Layer.ShadowColor = AppKit.NSColor.FromRgb(shadowColor.R, shadowColor.G, shadowColor.B).CGColor;
-	#else
+#else
 					view.Layer.ShadowColor = UIKit.UIColor.FromRGB(shadowColor.R, shadowColor.G, shadowColor.B).CGColor;
-	#endif
+#endif
 					view.Layer.ShadowRadius = (nfloat)(blur * elevation);
 					view.Layer.ShadowOffset = new CoreGraphics.CGSize(x * elevation, y * elevation);
 					view.Layer.ShadowPath = path;
@@ -117,16 +121,19 @@ namespace Uno.UI.Toolkit
 					const double x = 0.25d;
 					const double y = 0.92f * 0.5f; // Looks more accurate than the recommended 0.92f.
 					const double blur = 0.5f;
+					var color = Color.FromArgb((byte)(shadowColor.A * .35), shadowColor.R, shadowColor.G, shadowColor.B);
 
-					var str = $"{(x * elevation).ToStringInvariant()}px {(y * elevation).ToStringInvariant()}px {(blur * elevation).ToStringInvariant()}px {shadowColor.ToCssString()}";
+					var str = $"{(x * elevation).ToStringInvariant()}px {(y * elevation).ToStringInvariant()}px {(blur * elevation).ToStringInvariant()}px {color.ToCssString()}";
 					uiElement.SetStyle("box-shadow", str);
+					uiElement.SetCssClasses("noclip");
 				}
 				else
 				{
 					uiElement.ResetStyle("box-shadow");
+					uiElement.UnsetCssClasses("noclip");
 				}
 			}
-#elif NETFX_CORE
+#elif NETFX_CORE || NETCOREAPP
 			if (element is UIElement uiElement)
 			{
 				var compositor = ElementCompositionPreview.GetElementVisual(uiElement).Compositor;
@@ -208,7 +215,7 @@ namespace Uno.UI.Toolkit
 				return padding;
 			}
 
-			var property = uiElement.GetDependencyPropertyUsingReflection<Thickness>("PaddingProperty");
+			var property = uiElement.FindDependencyPropertyUsingReflection<Thickness>("PaddingProperty");
 			return property != null && uiElement.GetValue(property) is Thickness t ? t : default;
 		}
 
@@ -219,7 +226,7 @@ namespace Uno.UI.Toolkit
 				return true;
 			}
 
-			var property = uiElement.GetDependencyPropertyUsingReflection<Thickness>("PaddingProperty");
+			var property = uiElement.FindDependencyPropertyUsingReflection<Thickness>("PaddingProperty");
 			if (property != null)
 			{
 				uiElement.SetValue(property, padding);
@@ -288,15 +295,13 @@ namespace Uno.UI.Toolkit
 
 		private static Dictionary<(Type type, string property), DependencyProperty> _dependencyPropertyReflectionCache;
 
-		internal static DependencyProperty GetDependencyPropertyUsingReflection<TProperty>(this UIElement uiElement, string propertyName)
+		internal static DependencyProperty FindDependencyPropertyUsingReflection<TProperty>(this UIElement uiElement, string propertyName)
 		{
 			var type = uiElement.GetType();
 			var propertyType = typeof(TProperty);
 			var key = (ownerType: type, propertyName);
 
-			_dependencyPropertyReflectionCache =
-				_dependencyPropertyReflectionCache
-				?? new Dictionary<(Type, string), DependencyProperty>(2);
+			_dependencyPropertyReflectionCache ??= new Dictionary<(Type, string), DependencyProperty>(2);
 
 			if (_dependencyPropertyReflectionCache.TryGetValue(key, out var property))
 			{
@@ -317,7 +322,7 @@ namespace Uno.UI.Toolkit
 			{
 				uiElement.Log().Warn($"The {propertyName} dependency property does not exist on {type}");
 			}
-#if !NETFX_CORE
+#if !NETFX_CORE && !NETCOREAPP
 			else if (property.Type != propertyType)
 			{
 				uiElement.Log().Warn($"The {propertyName} dependency property {type} is not of the {propertyType} Type.");

@@ -7,57 +7,68 @@ using System.Text;
 using System.Linq;
 using Windows.UI.Composition;
 using System.Numerics;
+using Windows.Foundation.Metadata;
+using Microsoft.Extensions.Logging;
 using Uno.Extensions;
 using Uno.Logging;
 using Uno.UI;
 using Uno.UI.Extensions;
+using Windows.UI.Xaml.Controls.Primitives;
+using Uno.UI.DataBinding;
 
 namespace Windows.UI.Xaml
 {
 	public partial class UIElement : DependencyObject
 	{
-		// Even if this a concept of FrameworkElement, the loaded state is handled by the UIElement in order to avoid
-		// to cast to FrameworkElement each time a child is added or removed.
-		internal bool IsLoaded;
-
 		internal Size _unclippedDesiredSize;
 		internal Point _visualOffset;
-		internal List<UIElement> _children = new List<UIElement>();
 		private ContainerVisual _visual;
-		private Visibility _visibilityCache;
 		internal double _canvasTop;
 		internal double _canvasLeft;
 		private Rect _currentFinalRect;
 
-		private protected int? Depth { get; private set; }
-
 		public UIElement()
 		{
+			_log = this.Log();
+			_logDebug = _log.IsEnabled(LogLevel.Debug) ? _log : null;
+			_isFrameworkElement = this is FrameworkElement;
+
 			Initialize();
 			InitializePointers();
+			InitializeKeyboard();
 
-			RegisterPropertyChangedCallback(VisibilityProperty, OnVisibilityPropertyChanged);
-			RegisterPropertyChangedCallback(Controls.Canvas.LeftProperty, OnCanvasLeftChanged);
-			RegisterPropertyChangedCallback(Controls.Canvas.TopProperty, OnCanvasTopChanged);
+			this.RegisterPropertyChangedCallbackStrong(OnPropertyChanged);
 
 			UpdateHitTest();
 		}
+		partial void InitializeKeyboard();
 
-		private void OnCanvasTopChanged(DependencyObject sender, DependencyProperty dp)
+		private void OnPropertyChanged(ManagedWeakReference instance, DependencyProperty property, DependencyPropertyChangedEventArgs args)
 		{
-			_canvasTop = (double)this.GetValue(Controls.Canvas.TopProperty);
+			if(property == Controls.Canvas.TopProperty)
+			{
+				_canvasTop = (double)args.NewValue;
+			}
+			else if (property == Controls.Canvas.LeftProperty)
+			{
+				_canvasLeft = (double)args.NewValue;
+			}
 		}
 
-		private void OnCanvasLeftChanged(DependencyObject sender, DependencyProperty dp)
+
+		partial void OnOpacityChanged(DependencyPropertyChangedEventArgs args)
 		{
-			_canvasLeft = (double)this.GetValue(Controls.Canvas.LeftProperty);
+			UpdateOpacity();
 		}
 
-		private void OnVisibilityPropertyChanged(DependencyObject sender, DependencyProperty dp)
+		partial void OnIsHitTestVisibleChangedPartial(bool oldValue, bool newValue)
 		{
 			UpdateHitTest();
+		}
 
-			_visibilityCache = (Visibility)GetValue(VisibilityProperty);
+		private void UpdateOpacity()
+		{
+			Visual.Opacity = Visibility == Visibility.Visible ? (float)Opacity : 0;
 		}
 
 		internal ContainerVisual Visual
@@ -126,80 +137,40 @@ namespace Windows.UI.Xaml
 			InvalidateMeasure();
 		}
 
-		private void OnChildAdded(UIElement child)
+		internal void MoveChildTo(int oldIndex, int newIndex)
 		{
-
+			ApiInformation.TryRaiseNotImplemented("UIElement", "MoveChildTo");
 		}
 
-		internal virtual void OnElementLoaded()
+		internal bool RemoveChild(UIElement child)
 		{
-			IsLoaded = true;
-			foreach (var innerChild in _children.ToArray())
+			if (_children.Remove(child))
 			{
-				innerChild.OnElementLoaded();
+				InnerRemoveChild(child);
+				return true;
 			}
-		}
-
-		private bool IsParentLoaded()
-		{
-			var root = Window.Current.Content;
-
-			var current = this.GetParent();
-
-			while (current != null && current != root)
+			else
 			{
-				current = this.GetParent();
+				return false;
 			}
-
-			return current == root;
-		}
-
-		private void OnAddingChild(UIElement child)
-		{
-			if (IsLoaded)
-			{
-				child.OnElementLoaded();
-			}
-		}
-
-		partial void OnOpacityChanged(DependencyPropertyChangedEventArgs args)
-		{
-			UpdateOpacity();
-		}
-
-		partial void OnIsHitTestVisibleChangedPartial(bool oldValue, bool newValue)
-		{
-			UpdateHitTest();
-		}
-
-		private void UpdateOpacity()
-		{
-			Visual.Opacity = Visibility == Visibility.Visible ? (float)Opacity : 0;
-		}
-
-		internal UIElement RemoveChild(UIElement child)
-		{
-			_children.Remove(child);
-			child.SetParent(null);
-
-			if (Visual != null)
-			{
-				Visual.Children.Remove(child.Visual);
-			}
-
-			return child;
 		}
 
 		internal void ClearChildren()
 		{
 			foreach (var child in _children.ToArray())
 			{
-				child.SetParent(null);
-				// OnChildRemoved(child);
+				InnerRemoveChild(child);
 			}
 
 			_children.Clear();
 			InvalidateMeasure();
+		}
+
+		private void InnerRemoveChild(UIElement child)
+		{
+			child.SetParent(null);
+			Visual?.Children.Remove(child.Visual);
+			OnChildRemoved(child);
 		}
 
 		internal UIElement FindFirstChild() => _children.FirstOrDefault();
@@ -210,22 +181,18 @@ namespace Windows.UI.Xaml
 
 		internal bool IsPointerCaptured { get; set; }
 
-		internal virtual bool IsEnabledOverride() => true;
-
 		public virtual IEnumerable<UIElement> GetChildren() => _children;
 
 		public IntPtr Handle { get; set; }
 
-		internal Windows.Foundation.Point GetPosition(Point position, global::Windows.UI.Xaml.UIElement relativeTo)
-			=> TransformToVisual(relativeTo).TransformPoint(position);
-
 		protected virtual void OnVisibilityChanged(Visibility oldValue, Visibility newVisibility)
 		{
+			UpdateHitTest();
 			UpdateOpacity();
 
 			if (newVisibility == Visibility.Collapsed)
 			{
-				_desiredSize = new Size(0, 0);
+				LayoutInformation.SetDesiredSize(this, new Size(0, 0));
 				_size = new Size(0, 0);
 			}
 		}
@@ -234,7 +201,7 @@ namespace Windows.UI.Xaml
 		{
 		}
 
-		internal void ArrangeVisual(Rect finalRect, bool clipToBounds, Rect? clippedFrame = default)
+		internal void ArrangeVisual(Rect finalRect, Rect? clippedFrame = default)
 		{
 			LayoutSlotWithMarginsAndAlignments =
 				VisualTreeHelper.GetParent(this) is UIElement parent
@@ -260,27 +227,18 @@ namespace Windows.UI.Xaml
 					throw new InvalidOperationException($"{this}: Invalid frame size {newRect}. No dimension should be NaN or negative value.");
 				}
 
-				Rect? getClip()
+				Rect? clip;
+				if (this is Controls.ScrollViewer)
 				{
-					if (this is Controls.ScrollViewer)
-					{
-						return null;
-					}
-					else if (ClippingIsSetByCornerRadius)
-					{
-						// The clip geometry is set by the corner radius
-						// of Border, Grid, StackPanel, etc...
-						return null;
-					}
-					else if (Clip != null)
-					{
-						return Clip.Rect;
-					}
-
-					return new Rect(0, 0, newRect.Width, newRect.Height);
+					clip = (Rect?)null;
+				}
+				else
+				{
+					clip = clippedFrame;
 				}
 
-				OnArrangeVisual(newRect, getClip());
+				OnArrangeVisual(newRect, clip);
+				OnViewportUpdated(clippedFrame ?? Rect.Empty);
 			}
 			else
 			{
@@ -296,9 +254,23 @@ namespace Windows.UI.Xaml
 			Visual.Size = new Vector2((float)roundedRect.Width, (float)roundedRect.Height);
 			Visual.CenterPoint = new Vector3((float)RenderTransformOrigin.X, (float)RenderTransformOrigin.Y, 0);
 
-			if (clip is Rect rectClip)
+			ApplyNativeClip(clip ?? Rect.Empty);
+		}
+
+		partial void ApplyNativeClip(Rect clip)
+		{
+			if (ClippingIsSetByCornerRadius)
 			{
-				var roundedRectClip = LayoutRound(rectClip);
+				return; // already applied
+			}
+
+			if (clip.IsEmpty)
+			{
+				Visual.Clip = null;
+			}
+			else
+			{
+				var roundedRectClip = LayoutRound(clip);
 
 				Visual.Clip = Visual.Compositor.CreateInsetClip(
 					topInset: (float)roundedRectClip.Top,
@@ -307,10 +279,16 @@ namespace Windows.UI.Xaml
 					rightInset: (float)roundedRectClip.Right
 				);
 			}
-			else
-			{
-				Visual.Clip = null;
-			}
 		}
+
+		partial void ShowVisual()
+			=> Visual.IsVisible = true;
+
+		partial void HideVisual()
+			=> Visual.IsVisible = false;
+
+#if DEBUG
+		public string ShowLocalVisualTree() => this.ShowLocalVisualTree(1000);
+#endif
 	}
 }

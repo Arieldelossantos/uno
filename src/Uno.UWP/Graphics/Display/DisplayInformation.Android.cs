@@ -11,6 +11,25 @@ namespace Windows.Graphics.Display
 {
 	public sealed partial class DisplayInformation
 	{
+		private static DisplayInformation _instance;
+
+		private static DisplayInformation InternalGetForCurrentView()
+		{
+			if (_instance == null)
+			{
+				if (ContextHelper.TryGetCurrent(out _))
+				{
+					_instance = new DisplayInformation();
+				}
+				else
+				{
+					throw new Exception($"Failed to get current activity, DisplayInformation is not available. On Android, DisplayInformation is available as early as Application.OnLaunched.");
+				}
+			}
+
+			return _instance;
+		}
+
 		static partial void SetOrientationPartial(DisplayOrientations orientations)
 		{
 			var currentActivity = ContextHelper.Current as Activity;
@@ -194,7 +213,9 @@ namespace Windows.Graphics.Display
 				var rotation = windowManager.DefaultDisplay.Rotation;
 				using (var displayMetrics = new DisplayMetrics())
 				{
+#pragma warning disable 618
 					windowManager.DefaultDisplay.GetMetrics(displayMetrics);
+#pragma warning restore 618
 
 					int width = displayMetrics.WidthPixels;
 					int height = displayMetrics.HeightPixels;

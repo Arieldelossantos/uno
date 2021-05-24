@@ -1,4 +1,4 @@
-﻿#if __IOS__ || __MACOS__ || __SKIA__
+﻿#if __IOS__ || __MACOS__ || __SKIA__ || __ANDROID__
 using System;
 using System.Linq;
 using Windows.Foundation;
@@ -20,6 +20,11 @@ using NativeSingle = System.nfloat;
 #elif __SKIA__
 using _Color = Windows.UI.Color;
 using NativePath = Windows.UI.Composition.SkiaGeometrySource2D;
+using NativeSingle = System.Double;
+
+#elif __ANDROID__
+using _Color = Android.Graphics.Color;
+using NativePath = Android.Graphics.Path;
 using NativeSingle = System.Double;
 #endif
 
@@ -221,7 +226,6 @@ namespace Windows.UI.Xaml.Shapes
 			var userSize = GetUserSizes();
 			var (userMinSize, userMaxSize) = GetMinMax(userSize);
 			var strokeThickness = StrokeThickness;
-			var halfStrokeThickness = GetHalfStrokeThickness();
 			var pathBounds = GetPathBoundingBox(path); // The BoundingBox does also contains bezier anchors even if out of geometry
 			var pathSize = (Size)pathBounds.Size;
 
@@ -242,6 +246,7 @@ namespace Windows.UI.Xaml.Shapes
 			{
 				default:
 				case Stretch.None:
+					var alignedHalfStrokeThickness = GetAlignedHalfStrokeThickness();
 					// If stretch is None, we have to keep the origin defined by the absolute coordinates of the path:
 					//
 					// This means that if you draw a line from 50,50 to 100,100 (so it's not starting at 0, 0),
@@ -267,13 +272,13 @@ namespace Windows.UI.Xaml.Shapes
 					// Note: The logic would say to include the full StrokeThickness as it will "overflow" half on booth side of the path,
 					//		 but WinUI does include only the half of it.
 					var pathNaturalSize = new Size(
-						pathBounds.X == 0 ? pathBounds.Width + strokeThickness : pathBounds.Right + halfStrokeThickness,
-						pathBounds.Y == 0 ? pathBounds.Height + strokeThickness : pathBounds.Bottom + halfStrokeThickness);
+						pathBounds.X == 0 ? pathBounds.Width + strokeThickness : pathBounds.Right + alignedHalfStrokeThickness,
+						pathBounds.Y == 0 ? pathBounds.Height + strokeThickness : pathBounds.Bottom + alignedHalfStrokeThickness);
 					size = pathNaturalSize.AtMost(userMaxSize).AtLeast(userMinSize); // The size defined on the Shape has priority over the size of the geometry itself!
 					break;
 
 				case Stretch.Fill:
-					size = userMaxSize.FiniteOrDefault(availableSize);
+					size = userMaxSize.FiniteOrDefault(availableSize.FiniteOrDefault(pathSize));
 					break;
 
 #if !IS_DESIRED_SMALLER_THAN_CONSTRAINTS_ALLOWED
@@ -336,7 +341,7 @@ namespace Windows.UI.Xaml.Shapes
 			var stretch = Stretch;
 			var userSize = GetUserSizes();
 			var strokeThickness = StrokeThickness;
-			var halfStrokeThickness = GetHalfStrokeThickness();
+			var halfStrokeThickness = strokeThickness / 2.0;
 			var pathBounds = GetPathBoundingBox(path); // The BoundingBox does also contains bezier anchors even if out of geometry
 			var pathSize = (Size)pathBounds.Size;
 
@@ -357,9 +362,10 @@ namespace Windows.UI.Xaml.Shapes
 			{
 				default:
 				case Stretch.None:
+					var alignedHalfStrokeThickness = GetAlignedHalfStrokeThickness();
 					var pathNaturalSize = new Size(
-						pathBounds.X == 0 ? pathBounds.Width + strokeThickness : pathBounds.Right + halfStrokeThickness,
-						pathBounds.Y == 0 ? pathBounds.Height + strokeThickness : pathBounds.Bottom + halfStrokeThickness);
+						pathBounds.X == 0 ? pathBounds.Width + strokeThickness : pathBounds.Right + alignedHalfStrokeThickness,
+						pathBounds.Y == 0 ? pathBounds.Height + strokeThickness : pathBounds.Bottom + alignedHalfStrokeThickness);
 					var (userMinSize, userMaxSize) = GetMinMax(userSize);
 
 					var clampedSize = pathNaturalSize.AtMost(userMaxSize).AtLeast(userMinSize); // The size defined on the Shape has priority over the size of the geometry itself!
@@ -540,6 +546,8 @@ namespace Windows.UI.Xaml.Shapes
 #endif
 #elif __SKIA__
 			Render(path, renderScale.x, renderScale.y, renderOrigin.x, renderOrigin.y);
+#elif __ANDROID__
+			Render(path, size, renderScale.x, renderScale.y, renderOrigin.x, renderOrigin.y);
 #endif
 
 			return size;
@@ -550,7 +558,7 @@ namespace Windows.UI.Xaml.Shapes
 		/// <summary>
 		/// Gets the rounded/adjusted half stroke thickness that should be used for measuring absolute shapes (Path, Line, Polyline and Polygon)
 		/// </summary>
-		private double GetHalfStrokeThickness()
+		private double GetAlignedHalfStrokeThickness()
 			=> Math.Floor((ActualStrokeThickness + .5) / 2.0);
 
 		private
@@ -625,18 +633,30 @@ namespace Windows.UI.Xaml.Shapes
 				x = 1;
 				renderSize.Width = strokeThickness;
 			}
+			else if (double.IsInfinity(renderSize.Width))
+			{
+				x = 1;
+				renderSize.Width = geometrySize.Width;
+			}
 			else
 			{
-				x = (float)((renderSize.Width - strokeThickness) / geometrySize.Width);
+				var renderWidthWithStrokeThickness = Math.Max(renderSize.Width - strokeThickness, 0);
+				x = (float)(renderWidthWithStrokeThickness / geometrySize.Width);
 			}
 			if (geometrySize.Height < double.Epsilon)
 			{
 				y = 1;
 				renderSize.Height = strokeThickness;
 			}
+			else if (double.IsInfinity(renderSize.Height))
+			{
+				y = 1;
+				renderSize.Height = geometrySize.Height;
+			}
 			else
 			{
-				y = (float)((renderSize.Height - strokeThickness) / geometrySize.Height);
+				var renderHeightWithStrokeThickness = Math.Max(renderSize.Height - strokeThickness, 0);
+				y = (float)(renderHeightWithStrokeThickness  / geometrySize.Height);
 			}
 
 			return (x, y);

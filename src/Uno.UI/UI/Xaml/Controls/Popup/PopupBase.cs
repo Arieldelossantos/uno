@@ -7,6 +7,7 @@ using Windows.UI.Xaml.Input;
 using Uno.Extensions;
 using Uno.UI.DataBinding;
 using Windows.UI.Xaml.Media;
+using Uno.UI;
 #if XAMARIN_IOS
 using CoreGraphics;
 using UIKit;
@@ -39,19 +40,15 @@ namespace Windows.UI.Xaml.Controls
 		/// <inheritdoc />
 		protected override Size MeasureOverride(Size availableSize)
 		{
-			// As the Child is NOT part of the visual tree, it does not have to be measured,
-			// and the result size of this Popup is always 0,0
-
-			return new Size();
+			// As the Child is NOT part of the visual tree, it does not have to be measured
+			return new Size(Width, Height).FiniteOrDefault(default);
 		}
 
 		/// <inheritdoc />
 		protected override Size ArrangeOverride(Size finalSize)
 		{
-			// As the Child is NOT part of the visual tree, it does not have to be arranged,
-			// and the result size of this Popup is always 0,0
-
-			return new Size();
+			// As the Child is NOT part of the visual tree, it does not have to be arranged
+			return finalSize;
 		}
 
 		partial void OnIsOpenChangedPartial(bool oldIsOpen, bool newIsOpen)
@@ -76,7 +73,7 @@ namespace Windows.UI.Xaml.Controls
 				provider.Store.ClearValue(provider.Store.TemplatedParentProperty, DependencyPropertyValuePrecedences.Local);
 			}
 
-			UpdateDataContext();
+			UpdateDataContext(null);
 			UpdateTemplatedParent();
 
 			if (oldChild is FrameworkElement ocfe)
@@ -101,7 +98,7 @@ namespace Windows.UI.Xaml.Controls
 		{
 			base.OnDataContextChanged(e);
 
-			UpdateDataContext();
+			UpdateDataContext(e);
 		}
 
 		protected internal override void OnTemplatedParentChanged(DependencyPropertyChangedEventArgs e)
@@ -111,13 +108,21 @@ namespace Windows.UI.Xaml.Controls
 			UpdateTemplatedParent();
 		}
 
-		private void UpdateDataContext()
+		private void UpdateDataContext(DependencyPropertyChangedEventArgs e)
 		{
 			_childHasOwnDataContext = false;
 			if (Child is IDependencyObjectStoreProvider provider)
 			{
 				var dataContextProperty = provider.Store.ReadLocalValue(provider.Store.DataContextProperty);
-				if (dataContextProperty != null && dataContextProperty != DependencyProperty.UnsetValue)
+
+				var shouldClearValue = e != null && e.NewValue == null && dataContextProperty == e.OldValue;
+				if (shouldClearValue)
+				{
+					//In this case we are clearing the DataContext that was previously set by the Popup
+					//This usually occurs when the owner of the Popup is removed from the Visual Tree
+					provider.Store.ClearValue(provider.Store.DataContextProperty, DependencyPropertyValuePrecedences.Local);
+				}
+				else if (dataContextProperty != null && dataContextProperty != DependencyProperty.UnsetValue)
 				{
 					// Child already has locally set DataContext, we shouldn't overwrite it.
 					_childHasOwnDataContext = true;

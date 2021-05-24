@@ -19,22 +19,7 @@ namespace Windows.UI.ViewManagement
 		{
 			if (!ApiExtensibility.CreateInstance(this, out _applicationViewExtension))
 			{
-				throw new InvalidOperationException($"Unable to find ICoreWindowExtension extension");
-			}
-		}
-
-		internal void SetVisibleBounds(Rect newVisibleBounds)
-		{
-			if (newVisibleBounds != VisibleBounds)
-			{
-				VisibleBounds = newVisibleBounds;
-
-				if (this.Log().IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug))
-				{
-					this.Log().Debug($"Updated visible bounds {VisibleBounds}");
-				}
-
-				VisibleBoundsChanged?.Invoke(this, null);
+				throw new InvalidOperationException($"Unable to find IApplicationViewExtension extension");
 			}
 		}
 

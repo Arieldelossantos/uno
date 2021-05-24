@@ -85,9 +85,12 @@ namespace Uno.UWPSyncGenerator
 						  where Path.GetFileNameWithoutExtension(externalRedfs.Display).StartsWith("Windows.Foundation")
 						  || Path.GetFileNameWithoutExtension(externalRedfs.Display).StartsWith("Microsoft.UI")
 						  || Path.GetFileNameWithoutExtension(externalRedfs.Display).StartsWith("Microsoft.System")
+						  || Path.GetFileNameWithoutExtension(externalRedfs.Display).StartsWith("Microsoft.ApplicationModel.Resources")
+						  || Path.GetFileNameWithoutExtension(externalRedfs.Display).StartsWith("Microsoft.Graphics")
 						  || Path.GetFileNameWithoutExtension(externalRedfs.Display).StartsWith("Windows.Phone.PhoneContract")
 						  || Path.GetFileNameWithoutExtension(externalRedfs.Display).StartsWith("Windows.Networking.Connectivity.WwanContract")
 						  || Path.GetFileNameWithoutExtension(externalRedfs.Display).StartsWith("Windows.ApplicationModel.Calls.CallsPhoneContract")
+						  || Path.GetFileNameWithoutExtension(externalRedfs.Display).StartsWith("Microsoft.Web.WebView2.Core")
 						  let asm = _referenceCompilation.GetAssemblyOrModuleSymbol(externalRedfs) as IAssemblySymbol
 						  where asm != null
 						  select asm;
@@ -100,7 +103,11 @@ namespace Uno.UWPSyncGenerator
 				"Microsoft.UI.Xaml",
 				"Microsoft.UI.Composition",
 				"Microsoft.UI.Text",
-				"Microsoft.System"
+				"Microsoft.UI.Input",
+				"Microsoft.System",
+				"Microsoft.Graphics",
+				"Microsoft.ApplicationModel.Resources",
+				"Microsoft.Web",
 #endif
 			};
 
@@ -180,6 +187,10 @@ namespace Uno.UWPSyncGenerator
 				|| type.ContainingNamespace.ToString().StartsWith("Microsoft.System")
 				|| type.ContainingNamespace.ToString().StartsWith("Microsoft.UI.Composition")
 				|| type.ContainingNamespace.ToString().StartsWith("Microsoft.UI.Text")
+				|| type.ContainingNamespace.ToString().StartsWith("Microsoft.UI.Input")
+				|| type.ContainingNamespace.ToString().StartsWith("Microsoft.Graphics")
+				|| type.ContainingNamespace.ToString().StartsWith("Microsoft.ApplicationModel.Resources")
+				|| type.ContainingNamespace.ToString().StartsWith("Microsoft.Web")
 #endif
 			))
 			{
@@ -531,7 +542,7 @@ namespace Uno.UWPSyncGenerator
 				if (allMethods.HasUndefined)
 				{
 					allMethods.AppendIf(b);
-					var parms = string.Join(", ", method.Parameters.Select(p => $"{RefKindFormat(p)} {TransformType(ifaceSymbol, genericParameters, p.Type)} {p.Name}"));
+					var parms = string.Join(", ", method.Parameters.Select(p => $"{RefKindFormat(p)} {TransformType(ifaceSymbol, genericParameters, p.Type)} {SanitizeParameter(p.Name)}"));
 					var returnTypeName = TransformType(ifaceSymbol, genericParameters, method.ReturnType);
 					var typeAccessibility = GetMethodAccessibility(method);
 					var explicitImplementation = typeAccessibility == "" ? $"global::{ifaceSymbol.ToString()}." : "";
@@ -551,7 +562,7 @@ namespace Uno.UWPSyncGenerator
 			foreach (var property in ifaceSymbol.GetMembers().OfType<IPropertySymbol>())
 			{
 				var propertyTypeName = TransformType(ifaceSymbol, genericParameters, property.Type);
-				var parms = string.Join(", ", property.GetMethod?.Parameters.Select(p => $"{TransformType(ifaceSymbol, genericParameters, p.Type)} {p.Name}") ?? new string[0]);
+				var parms = string.Join(", ", property.GetMethod?.Parameters.Select(p => $"{TransformType(ifaceSymbol, genericParameters, p.Type)} {SanitizeParameter(p.Name)}") ?? new string[0]);
 
 				var allProperties = GetAllMatchingPropertyMember(types, property);
 
@@ -774,7 +785,7 @@ namespace Uno.UWPSyncGenerator
 				types.AppendIf(b);
 
 				var IMethodSymbol = type.GetMembers().OfType<IMethodSymbol>().First(m => m.Name == "Invoke");
-				var members = string.Join(", ", IMethodSymbol.Parameters.Select(p => $"{SanitizeType(p.Type)} @{p.Name}"));
+				var members = string.Join(", ", IMethodSymbol.Parameters.Select(p => $"{SanitizeType(p.Type)} {SanitizeParameter(p.Name)}"));
 
 				b.AppendLineInvariant($"public delegate {SanitizeType(IMethodSymbol.ReturnType)} {type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}({members});");
 
@@ -835,7 +846,7 @@ namespace Uno.UWPSyncGenerator
 					allMembers.AppendIf(b);
 
 					var staticQualifier = eventMember.AddMethod.IsStatic ? "static" : "";
-					var declaration = $"{staticQualifier} event {SanitizeType(eventMember.Type)} {eventMember.Name}";
+					var declaration = $"{staticQualifier} event {MapUWPTypes(SanitizeType(eventMember.Type))} {eventMember.Name}";
 
 					if (type.TypeKind == TypeKind.Interface)
 					{
@@ -994,7 +1005,7 @@ namespace Uno.UWPSyncGenerator
 
 								if (isAttachedPropertyMethod)
 								{
-									var instanceParamName = method.Parameters.First().Name;
+									var instanceParamName = SanitizeParameter(method.Parameters.First().Name);
 
 									if (method.Name.StartsWith("Get"))
 									{
@@ -1003,7 +1014,7 @@ namespace Uno.UWPSyncGenerator
 									}
 									else if (method.Name.StartsWith("Set"))
 									{
-										var valueParamName = method.Parameters.ElementAt(1).Name;
+										var valueParamName = SanitizeParameter(method.Parameters.ElementAt(1).Name);
 										b.AppendLineInvariant($"{instanceParamName}.SetValue({filteredName}Property, {valueParamName});");
 									}
 								}
@@ -1227,6 +1238,8 @@ namespace Uno.UWPSyncGenerator
 					return "Windows.Foundation.TimeSpan";
 				case "System.Collections.Generic.KeyValuePair":
 					return "Windows.Foundation.Collections.IKeyValuePair";
+				case "System.Collections.Specialized.INotifyCollectionChanged":
+					return "Windows.UI.Xaml.Interop.INotifyCollectionChanged";
 				case "System.Type":
 					return BaseXamlNamespace + ".Interop.TypeName";
 				case "System.Uri":
@@ -1389,6 +1402,15 @@ namespace Uno.UWPSyncGenerator
 				}
 			}
 
+			if (property.ContainingType.Name == "WebView2")
+			{
+				switch (property.Name)
+				{
+					case "CoreWebView2":
+						return true;
+				}
+			}
+
 			if (property.ContainingType.Name == "UIElement")
 			{
 				switch (property.Name)
@@ -1468,6 +1490,9 @@ namespace Uno.UWPSyncGenerator
 				//"global::Windows.Foundation.ICloseable" => "global::System.IDisposable",
 				"global::Windows.UI.Xaml.Input.ICommand" => "global::System.Windows.Input.ICommand",
 				"global::Microsoft.UI.Xaml.Input.ICommand" => "global::System.Windows.Input.ICommand",
+				"global::Microsoft.UI.Xaml.Interop.INotifyCollectionChanged" => "global::System.Collections.Specialized.INotifyCollectionChanged",
+				"global::Microsoft.UI.Xaml.Data.INotifyPropertyChanged" => "global::System.ComponentModel.INotifyPropertyChanged",
+				"global::Microsoft.UI.Xaml.Data.PropertyChangedEventHandler" => "global::System.ComponentModel.PropertyChangedEventHandler",
 				_ => typeName,
 			};
 		}

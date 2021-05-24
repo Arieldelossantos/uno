@@ -144,12 +144,15 @@ namespace Windows.UI.Xaml
 					Content = _rootBorder
 				};
 				_popupRoot = new PopupRoot();
+				FocusVisualLayer = new Canvas();
 				_window = new Grid()
 				{
+					IsVisualTreeRoot = true,
 					Children =
 					{
 						_rootScrollViewer,
-						_popupRoot
+						_popupRoot,
+						FocusVisualLayer
 					}
 				};
 			}
@@ -159,14 +162,14 @@ namespace Windows.UI.Xaml
 			{
 				if (FeatureConfiguration.FrameworkElement.WasmUseManagedLoadedUnloaded && !_window.IsLoaded)
 				{
-					_window.ManagedOnLoading();
+					UIElement.LoadingRootElement(_window);
 				}
 
 				WebAssemblyRuntime.InvokeJS($"Uno.UI.WindowManager.current.setRootContent({_window.HtmlId});");
 
 				if (FeatureConfiguration.FrameworkElement.WasmUseManagedLoadedUnloaded && !_window.IsLoaded)
 				{
-					_window.ManagedOnLoaded(1);
+					UIElement.RootElementLoaded(_window);
 				}
 			}
 			else
@@ -175,15 +178,14 @@ namespace Windows.UI.Xaml
 
 				if (FeatureConfiguration.FrameworkElement.WasmUseManagedLoadedUnloaded && _window.IsLoaded)
 				{
-					_window.ManagedOnUnloaded();
+					UIElement.RootElementUnloaded(_window);
 				}
 			}
 		}
 
-		private UIElement InternalGetContent()
-		{
-			return _content;
-		}
+		private UIElement InternalGetContent() => _content;
+
+		private UIElement InternalGetRootElement() => _window!;
 
 		private static Window InternalGetCurrentWindow()
 		{

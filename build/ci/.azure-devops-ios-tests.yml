@@ -1,10 +1,13 @@
 parameters:
   vmImage: ''
-  xCodeRoot: ''
-  XamarinSDKVersion: ''
+  xCodeRootTest: ''
+  XamarinSDKVersionTest: ''
+  xCodeRootBuild: ''
+  XamarinSDKVersionBuild: ''
 
 jobs:
 - job: iOS_Build
+  displayName: 'iOS Samples App UI Tests (Build)'
 
   pool:
     vmImage: ${{ parameters.vmImage }}
@@ -22,12 +25,13 @@ jobs:
     parameters:
       nugetPackages: $(NUGET_PACKAGES)
 
+  - template: templates/dotnet-install.yml
   - template: templates/optimize-roslyn-mono.yml
 
   - template: templates/ios-build-select-version.yml
     parameters:
-      xCodeRoot: ${{ parameters.xCodeRoot }}
-      XamarinSDKVersion: ${{ parameters.XamarinSDKVersion }}
+      xCodeRoot: ${{ parameters.xCodeRootBuild }}
+      XamarinSDKVersion: ${{ parameters.XamarinSDKVersionBuild }}
 
   - bash: |
       $(build.sourcesdirectory)/build/ios-uitest-build.sh
@@ -63,8 +67,8 @@ jobs:
     vmImage: ${{ parameters.vmImage }}
     UITEST_SNAPSHOTS_ONLY: false
     UITEST_AUTOMATED_GROUP: 1
-    xCodeRoot: ${{ parameters.xCodeRoot }}
-    XamarinSDKVersion: ${{ parameters.XamarinSDKVersion }}
+    xCodeRoot: ${{ parameters.xCodeRootTest }}
+    XamarinSDKVersion: ${{ parameters.XamarinSDKVersionTest }}
 
 - template: .azure-devops-ios-tests-run.yml
   parameters:
@@ -75,8 +79,8 @@ jobs:
     vmImage: ${{ parameters.vmImage }}
     UITEST_SNAPSHOTS_ONLY: false
     UITEST_AUTOMATED_GROUP: 2
-    xCodeRoot: ${{ parameters.xCodeRoot }}
-    XamarinSDKVersion: ${{ parameters.XamarinSDKVersion }}
+    xCodeRoot: ${{ parameters.xCodeRootTest }}
+    XamarinSDKVersion: ${{ parameters.XamarinSDKVersionTest }}
 
 - template: .azure-devops-ios-tests-run.yml
   parameters:
@@ -87,8 +91,33 @@ jobs:
     vmImage: ${{ parameters.vmImage }}
     UITEST_SNAPSHOTS_ONLY: false
     UITEST_AUTOMATED_GROUP: 3
-    xCodeRoot: ${{ parameters.xCodeRoot }}
-    XamarinSDKVersion: ${{ parameters.XamarinSDKVersion }}
+    xCodeRoot: ${{ parameters.xCodeRootTest }}
+    XamarinSDKVersion: ${{ parameters.XamarinSDKVersionTest }}
+
+- template: .azure-devops-ios-tests-run.yml
+  parameters:
+    nugetPackages: $(NUGET_PACKAGES)
+    JobName: 'iOS_Automated_Tests_Runtime_Tests'
+    JobDisplayName: 'iOS Automated Runtime Tests'
+    JobTimeoutInMinutes: 40
+    vmImage: ${{ parameters.vmImage }}
+    UITEST_SNAPSHOTS_ONLY: false
+    UITEST_AUTOMATED_GROUP: 4
+    xCodeRoot: ${{ parameters.xCodeRootTest }}
+    XamarinSDKVersion: ${{ parameters.XamarinSDKVersionTest }}
+
+# Disabled for benchmkarks timeout
+# - template: .azure-devops-ios-tests-run.yml
+#   parameters:
+#     nugetPackages: $(NUGET_PACKAGES)
+#     JobName: 'iOS_Automated_Tests_Benchmarks'
+#     JobDisplayName: 'iOS Automated Benchmarks'
+#     JobTimeoutInMinutes: 40
+#     vmImage: ${{ parameters.vmImage }}
+#     UITEST_SNAPSHOTS_ONLY: false
+#     UITEST_AUTOMATED_GROUP: Benchmarks
+#     xCodeRoot: ${{ parameters.xCodeRootTest }}
+#     XamarinSDKVersion: ${{ parameters.XamarinSDKVersionTest }}
 
 - template: .azure-devops-ios-tests-run.yml
   parameters:
@@ -99,8 +128,8 @@ jobs:
     vmImage: ${{ parameters.vmImage }}
     UITEST_SNAPSHOTS_ONLY: true
     UITEST_SNAPSHOTS_GROUP: 00
-    xCodeRoot: ${{ parameters.xCodeRoot }}
-    XamarinSDKVersion: ${{ parameters.XamarinSDKVersion }}
+    xCodeRoot: ${{ parameters.xCodeRootTest }}
+    XamarinSDKVersion: ${{ parameters.XamarinSDKVersionTest }}
 
 - template: .azure-devops-ios-tests-run.yml
   parameters:
@@ -111,8 +140,8 @@ jobs:
     vmImage: ${{ parameters.vmImage }}
     UITEST_SNAPSHOTS_ONLY: true
     UITEST_SNAPSHOTS_GROUP: 01
-    xCodeRoot: ${{ parameters.xCodeRoot }}
-    XamarinSDKVersion: ${{ parameters.XamarinSDKVersion }}
+    xCodeRoot: ${{ parameters.xCodeRootTest }}
+    XamarinSDKVersion: ${{ parameters.XamarinSDKVersionTest }}
 
 - template: .azure-devops-ios-tests-run.yml
   parameters:
@@ -123,8 +152,8 @@ jobs:
     vmImage: ${{ parameters.vmImage }}
     UITEST_SNAPSHOTS_ONLY: true
     UITEST_SNAPSHOTS_GROUP: 02
-    xCodeRoot: ${{ parameters.xCodeRoot }}
-    XamarinSDKVersion: ${{ parameters.XamarinSDKVersion }}
+    xCodeRoot: ${{ parameters.xCodeRootTest }}
+    XamarinSDKVersion: ${{ parameters.XamarinSDKVersionTest }}
 
 - template: .azure-devops-ios-tests-run.yml
   parameters:
@@ -135,6 +164,5 @@ jobs:
     vmImage: ${{ parameters.vmImage }}
     UITEST_SNAPSHOTS_ONLY: true
     UITEST_SNAPSHOTS_GROUP: 03
-    xCodeRoot: ${{ parameters.xCodeRoot }}
-    XamarinSDKVersion: ${{ parameters.XamarinSDKVersion }}
-
+    xCodeRoot: ${{ parameters.xCodeRootTest }}
+    XamarinSDKVersion: ${{ parameters.XamarinSDKVersionTest }}
